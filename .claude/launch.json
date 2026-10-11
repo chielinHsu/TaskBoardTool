@@ -1,0 +1,10 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "taskboard",
+      "url": "http://127.0.0.1:47824",
+      "port": 47824
+    }
+  ]
+}

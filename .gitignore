@@ -1,0 +1,6 @@
+work/
+**/__pycache__/
+.claude/settings.local.json
+.claude/worktrees/
+.ai/bench/
+.ai/router-state/

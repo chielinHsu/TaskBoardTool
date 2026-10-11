@@ -1,0 +1,13 @@
+{
+  "name": "caspar-taskboard",
+  "owner": {
+    "name": "Caspar Hsu"
+  },
+  "plugins": [
+    {
+      "name": "taskboard-pane",
+      "source": "./"
+    }
+  ],
+  "description": "Caspar 任務看板的 Claude Code App 側邊窗格 mod"
+}

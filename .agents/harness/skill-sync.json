@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "source": ".agents/skills",
+  "targets": [
+    {
+      "platform": "claude",
+      "path": ".claude/skills"
+    }
+  ],
+  "shared": [
+    "ai-handoff"
+  ],
+  "claudeOnly": [],
+  "codexOnly": [],
+  "ignore": [
+    ".DS_Store",
+    "Thumbs.db",
+    "*.tmp",
+    "*.bak"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "taskboard-pane",
+  "version": "0.1.1",
+  "description": "Caspar 任務看板：在 Claude Code App 側邊窗格直接檢視與操作 Codex／Claude Code 任務（/taskboard）",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Caspar Hsu"
+  }
+}
