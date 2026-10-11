@@ -2,7 +2,7 @@
 
 ## 2026-10-11：任務 86d197a4fe25 Claude 安裝副本修正與授權推送
 
-- 使用者已明確授權 TaskBoardTool 推送。origin 正確，修正已提交 41c6fd5；Git push 缺本機認證（Cannot prompt／unable to get password），改用已連線且有 push 權限的 GitHub 連接器發布提交快照，遠端 main/tree 驗證尚在進行。保留 master 完整歷史，雲端為獨立提交，不宣稱原歷史已 push，禁止 force。
+- VERIFIED：依使用者明確授權，GitHub main 已發布。修正本機提交 41c6fd5、發布說明 0c1d9bd；Git push 缺認證失敗，改以已授權 GitHub 連接器發布 77 個已提交檔案。首次遠端提交 3a092ee8f3dc89f8505d079a5b2338404b14255c，GitHub API／git fetch／git diff --exit-code 核對本機與遠端 tree 同為 bbae48d6406ac703b1521de49c8b59430e23c892。保留 master 完整歷史，雲端為獨立提交，後續文件亦循同一流程正常更新 main；不宣稱原提交歷史已 push，不 force。
 - Observed Fact：Claude App 的 .claude/dev-mods 安裝副本 register.tsx／types 與舊提交 2a2609d 完全一致，非連結；因此專案改為「列管」後，安裝副本仍顯示「積壓」。
 - 已修正安裝副本：taskboard-pane 0.1.1；新增 update-claude-mod.ps1 自動找到唯一副本，限定目前使用者 dev-mods、外掛身分、已知五個檔案；更新前備份差異至 work、更新後 SHA-256 核對。同步前 -Check 找出四個舊檔，同步後一致；重複同步不再修改。
 - VERIFIED：來源外掛與 App 安裝副本各 6/6 模擬測試，新增渲染「列管」且無「積壓」的明確斷言；validate、更新腳本 PowerShell 語法、技能同步／-Check、Strict 0 失敗／0 警告、路由 74/74 均通過。77 個目前檔案常見憑證模式掃描無命中（限定模式，不是完整秘密稽核）。

@@ -1,5 +1,13 @@
 # AI 工作紀錄
 
+## 2026-10-11：TaskBoardTool 雲端發布驗證
+
+- 使用者已明確授權指定 GitHub。修正提交 41c6fd5、發布方式說明 0c1d9bd；直接 Git push 缺認證失敗，改用已連線且有 push 權限的 GitHub 連接器，沒有複製 token 或修改全域設定。
+- 空庫 README 初始化後，以 Git data API 發布 77 個已提交檔案至 main。首次雲端提交 3a092ee8f3dc89f8505d079a5b2338404b14255c；VERIFIED：API branch 回讀與 git fetch／git diff --exit-code，遠端與本機 tree 同為 bbae48d6406ac703b1521de49c8b59430e23c892。
+- 最後文件檢查初次直接執行 .ps1 被系統 execution policy 阻擋，改為專案既有 powershell.exe -NoProfile -ExecutionPolicy Bypass -File 形式（只限子程序、不修改政策），Strict 0 失敗／0 警告與安裝副本 -Check 一致。
+- 本機 master 與原歷史保留；雲端為獨立提交，未宣稱原歷史已推送，不強制覆寫。此發布紀錄後續亦正常更新雲端，最終 SHA 以 origin/main／API 為準。私人資料、未知 .codex/ 與備份未發布，未直接修改任務資料庫。
+- Claude 安裝副本已同步且模擬測試通過；實際 App 重新載入與畫面因控制許可不足未驗證，需使用者 /reload-plugins、/taskboard；正式服務 folder API 與原生資料夾視窗實際操作仍待驗收。
+
 ## 2026-10-11：Claude App 舊安裝快照修正與 GitHub 授權
 
 - 使用者回報 App 仍顯示「積壓」，並明確授權推送。Observed Fact：App 安裝副本非連結，register.tsx／types 與 2a2609d 相同，未包含後續修改。
