@@ -18,7 +18,7 @@ NOT VERIFIED：筆電環境、`/plugin install --marketplace` 替代途徑、新
 1. 全域版已可用；可手動刪除 dev-mods 舊副本 93244cc6-…/taskboard-pane 避免該 session 重複載入。
 2. 筆電：clone、安裝並登入 claude CLI、Python 3、Node 22+，執行同一腳本；之後每次 pull 後重跑同步全域副本。Codex 側需 Store App。.data 不同步，為空白看板。
 3. 未知 .codex/ 未納入 Git，是否版控由使用者決定。
-4. 依授權提交本輪變更（stage 明列路徑）。
+4. 後續推送可沿用 `git -c http.sslBackend=schannel`；若要永久修正需使用者自行決定是否改 gitconfig。
 
 ## 相關檔案
 outputs/taskboard/setup-claude-mod.mjs、.gitignore、README.md；AI_CONTEXT.md；docs/current-status、changelog-ai、decisions（ADR-014）。
@@ -27,8 +27,11 @@ outputs/taskboard/setup-claude-mod.mjs、.gitignore、README.md；AI_CONTEXT.md�
 ## 不要動
 未知 .codex/、真實 .data／profile／認證、一般 App、官方安裝檔、使用者 settings.json 其他鍵；不直接編輯 SQLite。stage 明列路徑。
 
+## 發布
+本機 master c9b3519（作者以 -c 一次性指定 Caspar Hsu，未改全域 Git 設定）。Git HTTPS 以 OpenSSL 後端失敗（unable to get local issuer certificate），改以 `git -c http.sslBackend=schannel` 一次性使用 Windows 憑證庫，未修改 gitconfig。依 ADR-013 以 commit-tree 在 origin/main 99b12d7 之上建立同樹快照 cf3f1cf 並 fast-forward 推送 main；fetch 回讀 tree 51dd2bca 與本機 HEAD 一致（VERIFIED）。
+
 ## 未提交變更
-本輪新增腳本與文件更新未提交；.codex/ 仍為未追蹤。
+本節發布紀錄待提交；.codex/ 仍為未追蹤。
 
 ## 已知問題與未驗證事項
 mod 的 AbovePrompt 重開列依賴前面的 mod 呼叫 next(e)；筆電若有其他 band mod 需同樣處理。dev-mods 舊副本與新路徑在 session 93244cc6 內會重複載入，需人工刪除。
