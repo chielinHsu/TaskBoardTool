@@ -1,5 +1,11 @@
 # AI 工作紀錄
 
+## 2026-10-11：看板 mod 跨 session／跨電腦安裝腳本
+
+- 使用者問筆電 pull 後能否直接用、為何本 session 看不到看板。查明 dev-mods 快照是 session 專屬（資料夾名＝session id），mod 原始碼雖在 Git 內但不會自動載入；.data、work、settings.local 不在 Git；.codex/ 未追蹤。
+- 新增 outputs/taskboard/setup-claude-mod.mjs（Node，JSON 不經 PowerShell 5.1 轉義）。第一版登記專案來源路徑；使用者要求「改成全域」，改為雜湊比對同步到 ~/.claude/mods/taskboard-pane（與 usage-bar 同位置、保留引擎寫入檔、覆寫前備份），再登記全域路徑並移除專案路徑；settings.json 只改 CLAUDE_CODE_PLUGIN_DIRS／DIR_WATCH，備份至 work、回讀核對、--check 唯讀、前置條件與 validate 回報、列出舊副本但不刪除。gitignore 引擎寫入檔。README／AI_CONTEXT／ADR-014 更新。
+- 實際阻礙：自動模式以 Self-Modification 拒絕執行寫入 settings.json，未繞過；改由使用者執行。使用者執行後 --check 就緒、/reload-plugins 本 session 載入 taskboard-pane（VERIFIED）；筆電與新 session 自動開啟 NOT VERIFIED。
+
 ## 2026-10-11：TaskBoardTool 雲端發布驗證
 
 - 使用者已明確授權指定 GitHub。修正提交 41c6fd5、發布方式說明 0c1d9bd；直接 Git push 缺認證失敗，改用已連線且有 push 權限的 GitHub 連接器，沒有複製 token 或修改全域設定。

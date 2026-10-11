@@ -1,6 +1,19 @@
 # Caspar 的任務看板
 
-Claude App 若仍顯示舊名稱「積壓」，是外掛安裝副本尚未同步。更新專案後，在專案根目錄執行：
+## Claude Code App 內的看板窗格（mod）安裝
+
+mod 原始碼在 `claude-mod/taskboard-pane/`，但 Claude App 不會因為 clone／pull 專案就載入它。安裝方式與 usage-bar 等全域 mod 相同：複製到 `~/.claude/mods/taskboard-pane`，再把這個全域路徑登記到使用者層 `~/.claude/settings.json` 的 `env.CLAUDE_CODE_PLUGIN_DIRS`（Claude App 啟動的每個 session 都會讀取；專案層 settings 不行；不依賴專案 clone 在哪裡）。在專案根目錄執行：
+
+```powershell
+node outputs/taskboard/setup-claude-mod.mjs
+node outputs/taskboard/setup-claude-mod.mjs --check
+```
+
+腳本以 SHA-256 比對後只覆寫有差異的來源檔案，保留引擎寫入的 `.claude-plugin/types/` 與 `tsconfig.json`，覆寫前備份到 `work/claude-mod-backups`；settings.json 只改 `CLAUDE_CODE_PLUGIN_DIRS`／`CLAUDE_CODE_PLUGIN_DIR_WATCH` 兩個鍵、其餘原樣保留，寫入前備份到 `work/claude-settings-backups`，若先前登記過專案來源路徑會移除以免重複載入；同時回報 Node／Python／Claude CLI／Codex 是否齊全、`.claude/launch.json`、舊的 session 專屬 dev-mods 副本，並以 `claude plugin validate` 做靜態檢查（不耗額度）。設定只對**新啟動**的 session 生效：重開 Claude App 或開新 session 後窗格會自動出現，關閉後輸入 `/taskboard` 重開。之後 `git pull` 更新專案後重跑同一支腳本即同步全域副本（已載入全域版的 session 會熱重載）。若改用 `--plugin-dir` 直接載入來源資料夾，引擎會在其中寫入 types／tsconfig，已列入 .gitignore。另一台電腦 clone 後除了這支腳本，還需要安裝並登入 Claude Code CLI（`claude auth login`）、Python 3、Node 22+；Codex 側才需要 Microsoft Store Codex App。看板資料庫 `.data/` 不在 Git 內，新機器是空白看板。
+
+Claude App 的「開發 mod」機制會把安裝副本放在 `~/.claude/dev-mods/<建立它的 session id>/taskboard-pane`，**只在那一個 session 載入**；改用上述設定後該副本已多餘，確認新路徑可用後可手動刪除。以下舊流程只服務仍在使用 dev-mods 副本的情況：
+
+Claude App 若仍顯示舊名稱「積壓」，是 dev-mods 安裝副本尚未同步。更新專案後，在專案根目錄執行：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File outputs/taskboard/update-claude-mod.ps1
@@ -13,7 +26,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File outputs/taskboard/update
 
 Claude Code 的整合方式是 **CLI 整合**：看板在工作資料夾執行 `claude -p --input-format stream-json --output-format stream-json`，新對話用 `--session-id`，延續用 `--resume <session>`，模型以 `--model` 傳入，權限採 `acceptEdits` 並把工具呼叫核准請求送到看板「狀態列表」。執行結束進入待審核；停止時先送 interrupt，逾時才結束程序；程序異常結束或服務重啟都保存為中止／失敗，不會偽造完成。限制與未驗證事項：
 
-- **Claude Code App 內的入口（mod）**：`claude-mod/taskboard-pane/` 是 Claude Code 官方 mods 機制的外掛，載入後會在 Code 分頁旁停靠一個「任務看板」側邊窗格（session 開始自動開啟；關閉後輸入框上方會多一列「▦ 任務看板」按鈕，按它、在空的輸入框按 **9**、或輸入 `/taskboard` 都可重新開啟。鍵綁定檔只能對應引擎內建動作，無法指派真正的快捷鍵。輸入框上方的位置由所有 mod 共用：本 mod 會把其他 mod 的列一起畫出，但排在前面的 mod 也必須呼叫 `next(e)` 往下傳，否則這列不會出現——使用者的 `usage-bar` mod 已改為往下傳），以原生元件顯示派工卡片、工具徽章、核准請求，並提供重新整理、自動／手動派工、開始執行、停止、驗收完成、核准／拒絕與開啟完整看板的按鈕；「＋ 新增任務」可直接在窗格建立卡片（標題、單行需求、執行工具、模型、優先級、列管／待辦、專案、工作資料夾，可「建立並開始執行」）。資料來自同一個 loopback 服務。mods 只能畫 Box／Text／Button 等原生元件，沒有網頁內嵌，也不能在 App 最左側的導覽清單（New／Artifacts／…）新增項目，所以完整的新增任務、後續需求與對話閱讀仍在網頁版。安裝：在終端機 `claude` 內執行 `/plugin install taskboard-pane --marketplace "C:\CodexProject\Codex 小工具\outputs\taskboard\claude-mod\taskboard-pane"`（來源是本機資料夾），選 user scope 後每個 session 都會載入。
+- **Claude Code App 內的入口（mod）**：`claude-mod/taskboard-pane/` 是 Claude Code 官方 mods 機制的外掛，載入後會在 Code 分頁旁停靠一個「任務看板」側邊窗格（session 開始自動開啟；關閉後輸入框上方會多一列「▦ 任務看板」按鈕，按它、在空的輸入框按 **9**、或輸入 `/taskboard` 都可重新開啟。鍵綁定檔只能對應引擎內建動作，無法指派真正的快捷鍵。輸入框上方的位置由所有 mod 共用：本 mod 會把其他 mod 的列一起畫出，但排在前面的 mod 也必須呼叫 `next(e)` 往下傳，否則這列不會出現——使用者的 `usage-bar` mod 已改為往下傳），以原生元件顯示派工卡片、工具徽章、核准請求，並提供重新整理、自動／手動派工、開始執行、停止、驗收完成、核准／拒絕與開啟完整看板的按鈕；「＋ 新增任務」可直接在窗格建立卡片（標題、單行需求、執行工具、模型、優先級、列管／待辦、專案、工作資料夾，可「建立並開始執行」）。資料來自同一個 loopback 服務。mods 只能畫 Box／Text／Button 等原生元件，沒有網頁內嵌，也不能在 App 最左側的導覽清單（New／Artifacts／…）新增項目，所以完整的新增任務、後續需求與對話閱讀仍在網頁版。安裝：執行 `node outputs/taskboard/setup-claude-mod.mjs` 複製到全域 `~/.claude/mods/taskboard-pane` 並登記到 `~/.claude/settings.json` 的 `CLAUDE_CODE_PLUGIN_DIRS`（見本檔開頭）；`/plugin install taskboard-pane --marketplace <本機 claude-mod/taskboard-pane 路徑>` 為替代途徑，本機未實測。
 - 看板**不內嵌**於 Claude App 的網頁層（Claude App 沒有像 Codex 專用 profile／CDP 那樣的嵌入入口）。可用方案：`start.ps1` 開啟的瀏覽器版、或在 Claude App 的 Code 分頁用內建 Browser 窗格開啟 `http://127.0.0.1:47824`（專案根目錄 `.claude/launch.json` 提供 `taskboard` 設定，附掛既有服務）。這與 Codex 專用視窗的側欄嵌入不同，沒有側欄入口。
 - 看板派工產生的 Claude session 存於 `~/.claude/projects/`，可用 `claude --resume <session>`（對話視窗提供複製）在終端機延續；Claude App 的 `/resume` 清單依官方文件會列出本機 CLI sessions，但 `-p` 建立的 session 是否出現未實測。`claude://` 深連結只支援 App 自己的 `local_<id>` session，不能開啟看板建立的 session。
 - 真實派工已驗證（haiku、隔離看板）：首次執行與同 session `--resume` 後續需求都正確完成並回報；非唯讀 Bash 指令會以核准請求出現在看板「狀態列表」，核准後才執行（`git status` 等唯讀指令由 CLI 自動允許，不會提示）。若 CLI 尚未登入，派工會以「Failed to authenticate」失敗進待審核；請先在終端機執行 `claude auth login`。control_request／control_response 的訊息格式沒有公開文件，依 Agent SDK 與本機 2.1.283 實測；CLI 改版時可能需要調整，失敗會以錯誤顯示。

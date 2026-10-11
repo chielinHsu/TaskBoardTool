@@ -16,7 +16,8 @@ Python 標準函式庫 HTTP server／SQLite／subprocess RPC；原生 HTML／CSS
 | outputs/taskboard/session_sync.py | 唯讀 Codex session 回合訊號與衍生追蹤卡片（session_card 支援 tool） |
 | .claude/launch.json | Claude App Browser 窗格附掛看板服務的 preview 設定（taskboard） |
 | outputs/taskboard/claude-mod/taskboard-pane | Claude Code mod：停靠側邊窗格、/taskboard、窗格建卡、`import_plan` 工具；`claude plugin validate/test`（需 CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1） |
-| outputs/taskboard/update-claude-mod.ps1 | 將原始碼同步至 Claude App 的 .claude/dev-mods 安裝副本；-Check 唯讀比對，更新前備份至 work，更新後雜湊核對 |
+| outputs/taskboard/setup-claude-mod.mjs | 把 claude-mod/taskboard-pane 以雜湊比對同步到全域 `~/.claude/mods/taskboard-pane`，並登記到 `~/.claude/settings.json` env.CLAUDE_CODE_PLUGIN_DIRS（與 usage-bar 等 mod 相同；跨 session／跨電腦載入）；檢查前置條件；--check 唯讀，寫入前備份至 work |
+| outputs/taskboard/update-claude-mod.ps1 | 舊流程：將原始碼同步至 Claude App session 專屬 .claude/dev-mods 安裝副本；-Check 唯讀比對，更新前備份至 work，更新後雜湊核對 |
 | outputs/taskboard/plan_import.py | 終端機／Codex 匯入計畫 JSON 到 `/api/plans`（stdlib、loopback） |
 | outputs/taskboard/index.html | 看板、卡片、詳情、theme message |
 | outputs/taskboard/folder_picker.py、select-folder.ps1 | Windows 原生資料夾選擇工作、輪詢／取消／300 秒逾時；只回傳路徑，不寫任務 |
@@ -45,6 +46,7 @@ node tests/taskboard-projects.test.mjs
 node tests/taskboard-sessions-app.test.mjs
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/ai/sync-skills.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/ai/sync-skills.ps1 -Check
+node outputs/taskboard/setup-claude-mod.mjs --check --no-validate
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File outputs/taskboard/update-claude-mod.ps1 -Check
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/ai/check-ai-structure.ps1 -Strict
 node scripts/ai/check-model-routing.mjs
@@ -53,7 +55,7 @@ node scripts/ai/bench-model-routing.mjs
 實際 App 檢查：先使用桌面 Codex 捷徑或 start-app.ps1，執行 `node tests/taskboard-app.test.mjs`。測試暫時更動專用視窗 DOM 主題後還原、重新整理，不修改保存的卡片或設定。需 Node 原生 WebSocket 及 renderer 存取許可。PowerShell 語法使用 System.Management.Automation.Language.Parser.ParseFile 檢查。
 
 ## 限制與不變條件
-- Claude App 開發外掛使用 `.claude/dev-mods/<id>/taskboard-pane` 安裝快照，不是專案原始碼的連結；修改來源後須執行 update-claude-mod.ps1，同步後在 App 原有 session 使用 `/reload-plugins`、`/taskboard`。只更新五個已知外掛程式／測試／型別檔案，保留 App 產生的 tsconfig；不碰官方安裝檔或認證。
+- 看板 mod 的正規載入方式是全域副本 `~/.claude/mods/taskboard-pane` 加使用者層 `~/.claude/settings.json` 的 `env.CLAUDE_CODE_PLUGIN_DIRS`（setup-claude-mod.mjs 同步副本並登記；只對新 session 生效；git pull 後重跑即同步，已載入的 session 熱重載）。副本中引擎寫入的 `.claude-plugin/types/`、`tsconfig.json` 不覆寫；來源若被 --plugin-dir 直接載入也會產生這兩者，已 gitignore。`.claude/dev-mods/<session id>/taskboard-pane` 是 App「開發 mod」留下的 session 專屬快照，只在該 session 載入，不是原始碼連結；仍使用它時才需 update-claude-mod.ps1 同步（只更新五個已知檔案、保留 tsconfig），再 `/reload-plugins`、`/taskboard`。不碰官方安裝檔或認證。
 - 顯示名稱「列管」沿用 `backlog`，不遷移任務資料。專案候選來自 state 中既有卡片／唯讀 session；單一路徑自動載入，同名多路徑需明確選擇，保留手動路徑。`POST /api/folders/select` → `GET /api/folders/<id>`／`POST /api/folders/<id>/cancel`，沿用 token／Host／Origin／capability 保護；單一 Windows 視窗、300 秒逾時、服務關閉清理，選擇不自動儲存。
 - 執行工具 `tool` 為 codex／claude，任務、run、nextRun、同步卡片與對話皆帶工具；舊資料讀取時預設 codex，不背景改寫。session 去重與延續用 (tool, id)；延續只能同工具，換工具為 `handoff` 新對話並帶摘要。nextRun 固定保存 tool／model／effort／cwd，排隊期間不可更改，可取消排隊。export schemaVersion=5，API 1.5.0。
 - 依賴與計畫：`task_dependencies` 有向表投影 `dependsOn`／`blocks`，拒絕自我／循環；排程與 start 跳過被阻擋卡片；卡片進 `done` 時釋放前置全完成的積壓卡片到待辦。`POST /api/plans`（plan_import.py、網頁匯入計畫、mod 工具 import_plan）依 Kahn 順序建卡，`ROLE_ROUTING` 把 Claude 角色對應 model／effort；`effort` 以 `--effort` 傳給 Claude CLI，啟動前依 `supportedEffortLevels` 驗證。失敗 run 重試採卡片目前 model／effort。

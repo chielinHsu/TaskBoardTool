@@ -1,5 +1,11 @@
 # 目前狀態
 
+## 2026-10-11：看板 mod 跨 session／跨電腦安裝腳本
+
+- Observed Fact：Claude App「開發 mod」的安裝快照位於 `~/.claude/dev-mods/<session id>/taskboard-pane`，只在建立它的 session 載入；目前 session 與其他電腦都看不到窗格。使用者層 `~/.claude/settings.json` env.CLAUDE_CODE_PLUGIN_DIRS 是每個 session（含 App 啟動）都載入的途徑。
+- 新增 setup-claude-mod.mjs（依使用者要求採全域安裝，與 usage-bar 等 mod 相同）：雜湊比對後同步來源到 `~/.claude/mods/taskboard-pane`（保留引擎寫入的 types／tsconfig、覆寫前備份），把全域路徑登記到 CLAUDE_CODE_PLUGIN_DIRS、設 DIR_WATCH=1、移除若有的專案來源路徑，備份後寫入並回讀核對；--check 唯讀；回報前置條件與舊副本；claude plugin validate 靜態檢查。pull 後重跑即同步。README／AI_CONTEXT 改以此為正規流程，update-claude-mod.ps1 退為舊 dev-mods 流程。
+- VERIFIED：node --check、--check 乾跑（正確回報 6 個待複製檔、缺少的全域路徑、工具版本與舊副本）。使用者執行腳本後 VERIFIED：--check 就緒（exit 0）、~/.claude/mods/taskboard-pane 存在並由引擎寫入 types／tsconfig、/reload-plugins 後本 session 載入 taskboard-pane 工具。NOT VERIFIED：筆電環境、新 session 自動開啟窗格。.data 不進 Git，新機器為空白看板；未知 .codex/ 未版控。
+
 ## 2026-10-11：任務 86d197a4fe25 Claude 安裝副本修正與授權推送
 
 - VERIFIED：依使用者明確授權，GitHub main 已發布。修正本機提交 41c6fd5、發布說明 0c1d9bd；Git push 缺認證失敗，改以已授權 GitHub 連接器發布 77 個已提交檔案。首次遠端提交 3a092ee8f3dc89f8505d079a5b2338404b14255c，GitHub API／git fetch／git diff --exit-code 核對本機與遠端 tree 同為 bbae48d6406ac703b1521de49c8b59430e23c892。保留 master 完整歷史，雲端為獨立提交，後續文件亦循同一流程正常更新 main；不宣稱原提交歷史已 push，不 force。
