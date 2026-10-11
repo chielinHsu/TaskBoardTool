@@ -93,7 +93,17 @@ class QueueTests(unittest.TestCase):
         task = self.get(old['id'])
         task['queuedAt'] = 0
         self.board.store.put(task)
-        self.assertEqual(server.queue_order(self.get(old['id'])), (-1, self.get(old['id'])['createdAt']))
+        refreshed = self.get(old['id'])
+        self.assertEqual(server.queue_order(refreshed), (-1, refreshed['createdAt'], refreshed['createdAt'], refreshed['id']))
+
+    def test_queue_stamps_are_strictly_increasing_within_one_clock_tick(self):
+        # time.time() ticks every 15.6 ms on Windows; a burst of queued cards must still keep its order.
+        cards = [self.board.create({'title': f'同刻 {i}', 'status': 'todo'}) for i in range(5)]
+        stamps = [self.get(card['id'])['queuedAt'] for card in cards]
+        self.assertEqual(stamps, sorted(stamps))
+        self.assertEqual(len(set(stamps)), len(stamps))
+        ordered = sorted((self.get(card['id']) for card in cards), key=server.queue_order)
+        self.assertEqual([task['title'] for task in ordered], [card['title'] for card in cards])
 
     def test_followup_can_start_immediately_or_queue(self):
         task = self.board.create({'title': '二次修改', 'description': '第一次', 'tool': 'claude', 'cwd': str(self.root)})

@@ -1,5 +1,11 @@
 # 目前狀態
 
+## 2026-10-11：Store 版 Claude App 的 session 路徑
+
+- Observed Fact：橫幅「Claude App session 資料未找到」。Claude App 已是 MSIX 套件 `Claude_2.31226.1.0`，`%APPDATA%\Claude` 被虛擬化到 `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude`；桌面啟動的看板服務（非 App 子程序）讀不到，Claude Code 內啟動的實例讀得到。環境變數、token、程式碼比對皆相同，重啟服務不解。
+- 修正：claude_sessions.py 先找套件 LocalCache 路徑再找 Roaming，不可用時重新解析；能力值 `sessionRoot`、橫幅附實際路徑。VERIFIED：runtime Python 解析 49 rows、新增 2 測試、全套 47/48（queue 排程測試為既有偶發時間戳相同）。NOT VERIFIED：使用者重啟後實際橫幅。
+- 排程 queuedAt：Windows `time.time()` 15.6 ms 解析度造成同 tick 卡片同值；新增 `queue_stamp()` 嚴格遞增與 `queue_order` 次鍵，測試 49/49 連跑 3 次通過。
+
 ## 2026-10-11：看板 mod 跨 session／跨電腦安裝腳本
 
 - Observed Fact：Claude App「開發 mod」的安裝快照位於 `~/.claude/dev-mods/<session id>/taskboard-pane`，只在建立它的 session 載入；目前 session 與其他電腦都看不到窗格。使用者層 `~/.claude/settings.json` env.CLAUDE_CODE_PLUGIN_DIRS 是每個 session（含 App 啟動）都載入的途徑。

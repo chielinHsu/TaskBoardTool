@@ -1,8 +1,12 @@
 """Read-only index of local Claude Code sessions. Never launches, resumes or writes anything.
 
 Sources (both local, no credentials):
-- Claude Desktop App metadata: %APPDATA%/Claude/claude-code-sessions/<org>/<user>/local_<id>.json
-  (title, cwd, model, activity time, archive flag, cliSessionId).
+- Claude Desktop App metadata: <desktop root>/<org>/<user>/local_<id>.json
+  (title, cwd, model, activity time, archive flag, cliSessionId). The Store (MSIX) build of the
+  App virtualises its AppData, so the files physically live under
+  %LOCALAPPDATA%/Packages/Claude_*/LocalCache/Roaming/Claude/claude-code-sessions; only descendants
+  of the App see them through %APPDATA%/Claude/claude-code-sessions. Both locations are probed,
+  the package one first, so a board started from the desktop sees the same sessions.
 - Claude Code CLI transcripts: ~/.claude/projects/<encoded cwd>/<session id>.jsonl
   (official storage location; the record format is documented as internal and may change,
   so every parse is best-effort and bounded).
@@ -20,6 +24,35 @@ MAX_METADATA_BYTES = 1048576
 MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024
 RECENT_SECONDS = 600
 _RECORD_FILTER = re.compile(rb'"type":\s*"(?:user|assistant|custom-title)"')
+
+
+def desktop_root_candidates():
+    """Possible claude-code-sessions folders, most specific first; nothing is created or written."""
+    candidates = []
+    localappdata = os.environ.get('LOCALAPPDATA', '')
+    if localappdata:
+        packages = Path(localappdata) / 'Packages'
+        try:
+            found = sorted(packages.glob('Claude_*/LocalCache/Roaming/Claude/claude-code-sessions'))
+        except OSError:
+            found = []
+        candidates.extend(found)
+    appdata = os.environ.get('APPDATA', '')
+    if appdata:
+        candidates.append(Path(appdata) / 'Claude' / 'claude-code-sessions')
+    return candidates
+
+
+def resolve_desktop_root():
+    """First existing candidate; otherwise the %APPDATA% path (reported as unavailable) or None."""
+    candidates = desktop_root_candidates()
+    for candidate in candidates:
+        try:
+            if candidate.is_dir():
+                return candidate
+        except OSError:
+            continue
+    return candidates[-1] if candidates else None
 
 
 def encode_project(cwd):
@@ -50,15 +83,27 @@ def _has_block(content, kind):
 
 class ClaudeSessionIndex:
     def __init__(self, desktop_root=None, projects_root=None):
-        appdata = os.environ.get('APPDATA', '')
-        self.desktop_root = Path(desktop_root) if desktop_root else (Path(appdata) / 'Claude' / 'claude-code-sessions' if appdata else None)
+        self.explicit_desktop_root = Path(desktop_root) if desktop_root else None
+        self.desktop_root = self.explicit_desktop_root or resolve_desktop_root()
         config = os.environ.get('CLAUDE_CONFIG_DIR') or str(Path.home() / '.claude')
         self.projects_root = Path(projects_root or Path(config) / 'projects').resolve()
         self.cache = {}
 
     @property
     def desktop_available(self):
-        return bool(self.desktop_root and self.desktop_root.is_dir())
+        try:
+            if self.desktop_root and self.desktop_root.is_dir():
+                return True
+        except OSError:
+            pass
+        if self.explicit_desktop_root:
+            return False
+        # The App may have been installed or migrated after the board started: probe again.
+        self.desktop_root = resolve_desktop_root()
+        try:
+            return bool(self.desktop_root and self.desktop_root.is_dir())
+        except OSError:
+            return False
 
     @property
     def transcripts_available(self):

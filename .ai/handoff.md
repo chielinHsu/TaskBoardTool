@@ -1,6 +1,15 @@
-# 交接（2026-10-11）：看板 mod 跨 session／跨電腦安裝腳本
+# 交接（2026-10-11）：Store 版 Claude App session 路徑修正；看板 mod 全域安裝
 
 ## 正在做
+看板橫幅「Claude App session 資料未找到」：桌面啟動的服務讀不到 session。根因已定位並修正，待使用者重啟看板服務驗收（stop.ps1 → 桌面捷徑）。本輪修改依授權提交推送。
+
+### Store 版 Claude App 路徑（本輪）
+- Observed Fact：Claude App 為 MSIX 套件 `Claude_2.31226.1.0_x64__pzs8sxrjxfjjc`，`%APPDATA%\Claude` 全部項目的最終路徑都在 `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude`（AppData 虛擬化）。只有 App 子程序（Claude Code 的 shell、從 Claude 內啟動的測試實例）能經 Roaming 路徑看到；桌面啟動的 server（PID 28088／14608，環境、token、程式碼皆與正常程序相同）回報 `listSessions:false`，重啟後仍然。隔離實例從 Claude shell 啟動則為 true，這是判定關鍵。
+- 修正：claude_sessions.py 新增 `desktop_root_candidates()`／`resolve_desktop_root()`，先找 `Packages\Claude_*\LocalCache\Roaming\Claude\claude-code-sessions` 再找 `%APPDATA%`；`desktop_available` 在不可用時重新解析（explicit root 除外）。能力值新增 `sessionRoot`，橫幅「資料未找到」附上實際檢查路徑。README／AI_CONTEXT／architecture 更新。
+- VERIFIED：用 Codex runtime Python（與桌面啟動相同）直接解析得到套件路徑、49 rows；新增 2 個單元測試通過；全套 test_taskboard_* 48 測試中 47 通過。NOT VERIFIED：使用者重啟服務後的實際橫幅。
+- 排程時間戳：`time.time()` 在 3.11／3.12 runtime 解析度 15.6 ms（20000 次只有 1–2 個值），同一 tick 排入的卡片 queuedAt 相同，待辦順序未定義，測試因此偶發失敗。修正：server.py 新增 `queue_stamp()`（鎖＋嚴格遞增），四個進入待辦的位置改用；`queue_order` 加 createdAt、id 次鍵。新增測試驗證同 tick 5 張卡嚴格遞增；全套 49 測試連跑 3 次皆 OK（VERIFIED）。使用者授權一併提交推送。
+
+### mod 全域安裝（前一輪，已推送）
 使用者問另一台筆電 pull 後能否直接用，以及為何目前 session 看不到看板窗格。已查明原因並寫 setup-claude-mod.mjs；使用者已執行並 /reload-plugins，本 session 已載入全域 mod。使用者授權 commit 與 push。
 
 ## 已完成

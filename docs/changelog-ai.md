@@ -1,5 +1,12 @@
 # AI 工作紀錄
 
+## 2026-10-11：Store 版 Claude App 的 session 路徑修正
+
+- 使用者回報看板讀不到 Claude App sessions。逐項排除：檔案存在（51 筆）、server 環境 APPDATA 正確、同使用者同 token、程式碼與 pyc 皆現行、能力值無快取；隔離實例從 Claude shell 啟動可讀。最後以 PowerShell Target 與 GetPackageFullName 證實 Claude App 為 MSIX 套件、AppData 虛擬化，桌面啟動的服務看不到 `%APPDATA%\Claude\claude-code-sessions`。
+- 修正 claude_sessions.py 候選路徑（套件 LocalCache 優先）、不可用時重新解析；claude_adapter 能力值加 `sessionRoot`；index.html 橫幅附路徑；新增 2 個單元測試；README／AI_CONTEXT／architecture 更新。
+- 中途曾建議使用者重啟服務（無效，因根因在路徑不在程序狀態）；未從 Claude 工具內啟動正式服務以免繼承 CLAUDECODE 環境。待使用者 stop.ps1 後以桌面捷徑重啟驗收。
+- 使用者要求一併處理偶發的排程測試：量測 `time.time()` 解析度 15.6 ms，確認是產品問題（同 tick 排入的卡片 queuedAt 相同）。新增 `queue_stamp()` 與 `queue_order` 次鍵、新增測試；全套 49 測試三次通過；ADR-016。
+
 ## 2026-10-11：看板 mod 跨 session／跨電腦安裝腳本
 
 - 使用者問筆電 pull 後能否直接用、為何本 session 看不到看板。查明 dev-mods 快照是 session 專屬（資料夾名＝session id），mod 原始碼雖在 Git 內但不會自動載入；.data、work、settings.local 不在 Git；.codex/ 未追蹤。

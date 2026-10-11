@@ -248,6 +248,7 @@ class ClaudeAdapter(ToolAdapter):
                 'connected': available and not self.version_error, 'connectionError': reason, 'version': self.version,
                 'models': available, 'resume': available, 'stop': available, 'approvals': available,
                 'readChat': self.sessions.transcripts_available, 'listSessions': self.sessions.desktop_available,
+                'sessionRoot': str(self.sessions.desktop_root or ''),
                 'embed': False, 'openInApp': False, 'permissionMode': PERMISSION_MODE,
                 'notes': ['以 claude -p 於工作資料夾執行；同一 session 以 --resume 延續。',
                           '工具權限請求會送到看板核准；檔案編輯依 acceptEdits 自動允許。',

@@ -134,5 +134,44 @@ class SessionTests(unittest.TestCase):
             self.board.chat_sync_lock.release()
 
 
+class ClaudeDesktopRootTests(unittest.TestCase):
+    """Store (MSIX) builds keep claude-code-sessions under the package LocalCache; the index must find it."""
+
+    def test_prefers_package_localcache_then_roaming(self):
+        import claude_sessions
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            roaming = root / 'Roaming'
+            local = root / 'Local'
+            env = {'APPDATA': str(roaming), 'LOCALAPPDATA': str(local)}
+            with patch.dict('os.environ', env):
+                index = claude_sessions.ClaudeSessionIndex(projects_root=root / 'p')
+                self.assertEqual(index.desktop_root, roaming / 'Claude' / 'claude-code-sessions')
+                self.assertFalse(index.desktop_available)
+                # Roaming appears (non-Store build or App descendant view).
+                (roaming / 'Claude' / 'claude-code-sessions').mkdir(parents=True)
+                self.assertTrue(index.desktop_available)
+                self.assertEqual(index.desktop_root, roaming / 'Claude' / 'claude-code-sessions')
+                # Package LocalCache wins when present, even for a board started outside the App.
+                package = local / 'Packages' / 'Claude_pzs8sxrjxfjjc' / 'LocalCache' / 'Roaming' / 'Claude' / 'claude-code-sessions'
+                package.mkdir(parents=True)
+                fresh = claude_sessions.ClaudeSessionIndex(projects_root=root / 'p')
+                self.assertEqual(fresh.desktop_root, package)
+                self.assertTrue(fresh.desktop_available)
+                (package / 'org' / 'user').mkdir(parents=True)
+                (package / 'org' / 'user' / 'local_a.json').write_text(json.dumps({
+                    'cliSessionId': 'abc-123', 'title': 'Store build', 'cwd': str(root), 'lastActivityAt': 1700000000000}), encoding='utf-8')
+                self.assertEqual([row['id'] for row in fresh.list()], ['abc-123'])
+
+    def test_explicit_root_is_never_replaced(self):
+        import claude_sessions
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with patch.dict('os.environ', {'APPDATA': str(root / 'Roaming'), 'LOCALAPPDATA': str(root / 'Local')}):
+                index = claude_sessions.ClaudeSessionIndex(root / 'explicit', root / 'p')
+                self.assertFalse(index.desktop_available)
+                self.assertEqual(index.desktop_root, root / 'explicit')
+
+
 if __name__ == '__main__':
     unittest.main()

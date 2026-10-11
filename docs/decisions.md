@@ -1,5 +1,21 @@
 # ADR 決策紀錄
 
+## ADR-016：待辦排隊時間戳嚴格遞增（2026-10-11）
+
+- 背景：`queuedAt` 取自 `time.time()`，Windows 上解析度 15.6 ms；計畫匯入、前置完成釋放、連續操作會讓多張卡片同值，排程與看板的 FIFO 順序未定義，測試偶發失敗。
+- 決定：`queue_stamp()` 以鎖保護的最後值加 1 µs 保證嚴格遞增，所有進入待辦的路徑使用；`queue_order` 以 createdAt、id 作次鍵，舊資料同值也有確定順序。不改既有卡片資料。
+- 理由：排隊順序是使用者可見契約；不依賴 OS 時鐘精度，也不需改測試 sleep。
+- 替代方案：改用 `time.perf_counter()`（非牆鐘、重啟不連續，否決）；只修測試 sleep（遮蓋產品問題，否決）；序號欄位（需 migration，暫不採）。
+- 後果：同 tick 內的 queuedAt 可能比牆鐘領先數 µs，顯示無差異；多程序寫入同一 DB 不在設計內。
+
+## ADR-015：Claude App session 目錄以套件 LocalCache 為優先候選（2026-10-11）
+
+- 背景：Store 版（MSIX）Claude App 的 AppData 被虛擬化，`%APPDATA%\Claude\claude-code-sessions` 只有 App 子程序看得到，實體檔案在 `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code-sessions`。桌面啟動的看板服務因此列不出 Claude sessions。
+- 決定：`resolve_desktop_root()` 依序探測套件 LocalCache 路徑與 `%APPDATA%` 路徑，取第一個存在者；明確傳入的 desktop_root 不被取代；不可用時每次查詢重新解析。能力值回報 `sessionRoot`，橫幅顯示實際檢查路徑。
+- 理由：兩條路徑在 App 子程序中指向同一實體目錄，套件路徑在任何程序都可讀，因此優先；仍保留 Roaming 以支援非 Store 版安裝；只讀、不建立目錄。
+- 替代方案：要求使用者固定從 Claude Code 內啟動服務（會繼承 CLAUDECODE，派工時成巢狀 session，否決）；設定檔手動指定路徑（可作為後備，未實作）。
+- 後果：多個 Claude 套件版本並存時取排序第一個；App 改回非套件安裝時自動回退 Roaming；文件與測試已更新。
+
 ## ADR-014：看板 mod 安裝為全域 ~/.claude/mods 副本並以 CLAUDE_CODE_PLUGIN_DIRS 載入（2026-10-11）
 
 - 背景：mod 先前以 Claude App「開發 mod」機制安裝在 `~/.claude/dev-mods/<session id>/`，只在該 session 載入；其他 session 與另一台電腦 clone 後都看不到窗格，且更新需 update-claude-mod.ps1 複製。

@@ -39,6 +39,20 @@ def stamp():
     return time.time()
 
 
+_queue_clock_lock = threading.Lock()
+_queue_clock_last = 0.0
+
+
+def queue_stamp():
+    """Strictly increasing wall-clock stamp for queue order. time.time() ticks every 15.6 ms on Windows, so
+    cards queued in one burst (plan import, dependency release, quick clicks) would otherwise tie."""
+    global _queue_clock_last
+    with _queue_clock_lock:
+        now = max(time.time(), _queue_clock_last + 1e-6)
+        _queue_clock_last = now
+        return now
+
+
 def decode_task(body):
     """Read older cards without rewriting the database or losing their last report."""
     task = json.loads(body)
@@ -63,8 +77,9 @@ def decode_task(body):
 
 
 def queue_order(task):
-    """Scheduler and board order: highest priority first, then first into the todo queue (creation time for older cards)."""
-    return (-PRIORITIES.index(task.get('priority', 'medium')), task.get('queuedAt') or task['createdAt'])
+    """Scheduler and board order: highest priority first, then first into the todo queue (creation time for older
+    cards); creation time and id break remaining ties deterministically."""
+    return (-PRIORITIES.index(task.get('priority', 'medium')), task.get('queuedAt') or task['createdAt'], task['createdAt'], task['id'])
 
 
 def task_thread_ids(task):
@@ -502,7 +517,7 @@ class Board:
             if dependent['status'] != 'backlog' or self.blockers(dependent):
                 continue
             dependent['comments'].append({'text': '前置卡片已全部完成，自動排入待辦。', 'at': stamp(), 'author': '系統'})
-            dependent['status'], dependent['error'], dependent['retryAt'], dependent['queuedAt'] = 'todo', '', 0, stamp()
+            dependent['status'], dependent['error'], dependent['retryAt'], dependent['queuedAt'] = 'todo', '', 0, queue_stamp()
             released.append(self.store.put(dependent))
         return released
 
@@ -525,7 +540,7 @@ class Board:
             raise BoardError('優先級不正確。')
         task['priority'] = body.get('priority', 'medium')
         if status == 'todo':
-            task['queuedAt'] = stamp()
+            task['queuedAt'] = queue_stamp()
         self.validate_workspace(task['cwd'])
         related_ids, depends_on = self.properties(task, body)
         return self.store.put(task, related_ids, depends_on)
@@ -550,7 +565,7 @@ class Board:
                 if body['status'] not in STATUSES or body['status'] == 'in_progress':
                     raise BoardError('請用「開始執行」將任務移到進行中。')
                 if body['status'] == 'todo' and task['status'] != 'todo':
-                    task['queuedAt'] = stamp()
+                    task['queuedAt'] = queue_stamp()
                 task['status'] = body['status']
             if 'priority' in body:
                 if body['priority'] not in PRIORITIES:
@@ -633,7 +648,7 @@ class Board:
             task['comments'].append({'text': text, 'at': stamp(), 'author': '你',
                                      'kind': 'followup', 'threadId': thread_id, 'tool': tool})
             task['tool'], task['model'], task['effort'] = tool, model, effort
-            task['status'], task['error'], task['retryAt'], task['queuedAt'] = 'todo', '', 0, stamp()
+            task['status'], task['error'], task['retryAt'], task['queuedAt'] = 'todo', '', 0, queue_stamp()
             saved = self.store.put(task)
             if body.get('startNow') is True:
                 # The person wants this revision to run right away instead of waiting for the scheduler.
