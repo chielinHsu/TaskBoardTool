@@ -577,7 +577,9 @@ class Board:
             if task.get('nextRun') and any(task[key] != previous[key] for key in ('cwd', 'tool', 'model', 'effort')):
                 # Queued runs keep their explicit parameters; change them by cancelling the queue first.
                 raise BoardError('已有後續需求排隊，請先執行或取消排隊，再更換工具、模型、推理強度或工作資料夾。', 409)
-            if task['status'] == 'todo':
+            if task['status'] in ('todo', 'done'):
+                # Re-queueing retries the card; marking it done is the user's acceptance, so a stale failure
+                # must not be replayed by the status event or keep the card flagged. Runs keep their own error.
                 task['error'], task['retryAt'] = '', 0
             saved = self.store.put(task, related_ids, depends_on)
             if saved['status'] == 'done' and previous['status'] != 'done':

@@ -1,5 +1,17 @@
 # AI 工作紀錄
 
+## 2026-10-12：驗收完成時清除舊的失敗訊息
+
+- 解釋「需要處理」徽章（卡片 error 非空）與拖到已完成時重播舊錯誤的原因（Store.put 的狀態事件沿用卡片 error，PATCH done 不清除）。使用者決定：done 時清除 error；後續對話或二次修正解決後卡片要更新。
+- server.py Board.update 的清除條件由 `todo` 擴為 `todo`／`done`；run 內錯誤保留。後續 run 成功覆寫 error 為既有行為，新增測試 `test_failed_run_clears_after_successful_followup_or_acceptance` 覆蓋 followup 成功與驗收兩條路徑及事件內容。
+- VERIFIED：新測試修正前失敗、修正後通過，`py -3.9` 全套 50 測試通過。實際阻礙：本機 `python` 為 Store alias stub，heredoc 編輯靜默未寫入，改用編輯工具重做；`py -3.12` 無法建立程序。未 stage、commit、push。
+
+## 2026-10-12：啟用 Codex App 任務看板入口
+
+- 依使用者要求，執行既有 `outputs/taskboard/start-app.ps1`，重用 47824 服務並啟動專用 Codex profile／9232 renderer 與 helper；未改產品程式或真實任務資料。
+- VERIFIED：專用 profile 所有權核對、左側圖示及「New chat」下方文字入口、看板載入；既有 App 整合測試四組全部通過（API、主題、圖示、reload 後單一入口與內容）。普通 Codex 視窗保留，未派工或消耗模型額度。
+- 實際阻礙：沙箱無法建立命令程序，經範圍限定核准後在沙箱外執行；啟動器初次等候原生導覽列，稍後載入成功。未另做完整關閉／桌面捷徑冷啟動。啟動前工作目錄乾淨；本輪只有三份交接文件未提交。
+
 ## 2026-10-12：新電腦安裝看板；詳情「建立派工卡片」漏傳工具修正
 
 - 新電腦（HQ 筆電）安裝：setup-claude-mod.mjs 同步 6 個檔案到 ~/.claude/mods/taskboard-pane 並登記 CLAUDE_CODE_PLUGIN_DIRS（原設定備份至 work）；install-desktop-shortcut.ps1 建立桌面 Codex.lnk；start.ps1 以 Codex runtime Python 3.12 啟動 47824。使用者 /reload-plugins 後本 session 載入 taskboard-pane（4 plugins）。

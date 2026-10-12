@@ -308,6 +308,27 @@ class ToolTests(unittest.TestCase):
         self.board.update(task['id'], {'version': cancelled['version'], 'tool': 'codex', 'model': ''})
         self.assertEqual(self.board.store.get(task['id'])['tool'], 'codex')
 
+    def test_failed_run_clears_after_successful_followup_or_acceptance(self):
+        # A fixed follow-up run replaces the stale failure; accepting the card (done) also drops it so the
+        # review event does not replay the old error. Run history keeps the original failure.
+        failed = self.run_claude(self.create(tool='claude', description='CRASH')['id'])
+        self.assertEqual(failed['status'], 'in_review')
+        self.assertIn('not logged in', failed['error'])
+        edited = self.board.update(failed['id'], {'version': failed['version'], 'description': '修正後的需求'})
+        self.board.followup(failed['id'], {'version': edited['version'], 'text': '重新登入後再跑一次', 'threadId': failed['workerThreadId']})
+        fixed = self.run_claude(failed['id'])
+        self.assertEqual((fixed['status'], fixed['error']), ('in_review', ''))
+        self.assertEqual([r['status'] for r in fixed['runs']], ['failed', 'completed'])
+        self.assertIn('not logged in', fixed['runs'][0]['error'])
+        latest = self.board.store.events()[0]
+        self.assertEqual((latest['status'], latest['message'], latest['error']), ('in_review', '執行已結束，等待人工驗收', False))
+        stale = self.run_claude(self.create(tool='claude', description='CRASH')['id'])
+        accepted = self.board.update(stale['id'], {'version': stale['version'], 'status': 'done'})
+        self.assertEqual((accepted['status'], accepted['error'], accepted['retryAt']), ('done', '', 0))
+        self.assertIn('not logged in', accepted['runs'][-1]['error'])
+        latest = self.board.store.events()[0]
+        self.assertEqual((latest['taskId'], latest['status'], latest['message'], latest['error']), (stale['id'], 'done', '使用者已驗收，任務完成', False))
+
     def test_claude_session_index_reads_desktop_metadata_and_transcript(self):
         cwd = str(self.root / 'proj')
         session = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'

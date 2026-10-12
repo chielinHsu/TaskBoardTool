@@ -1,5 +1,18 @@
 # 目前狀態
 
+## 2026-10-12：驗收完成時清除舊的失敗訊息
+
+- 使用者回報待審核卡片出現「需要處理」，拖到已完成時 toast 顯示舊的 OAuth 錯誤。原因：Claude CLI 登入過期，派工 run 失敗，錯誤存為卡片 `error`；狀態事件 message 優先採用卡片 error，而改為 done 不清除，所以驗收事件重播失敗訊息。
+- 修正 server.py Board.update：狀態為 todo 或 done 時一併清除 error／retryAt；run 歷史仍保留當次錯誤。後續 run 成功本來就會覆寫卡片 error，以新測試固定此行為。
+- VERIFIED：新測試修正前失敗、修正後通過；Python 全套 50 測試通過。NOT VERIFIED：真實看板需重啟服務後才生效；未改前端，Node／App 測試未跑。本機 `python` 為 Store alias 會靜默失敗，改用 `py -3.9`。
+
+## 2026-10-12：Codex App 任務看板入口啟用
+
+- 使用者要求在 Codex App 顯示任務看板入口。啟動前 Git 工作目錄乾淨；47824 看板服務已運行，尚無專用 profile／9232 renderer。沿用 `start-app.ps1` 啟動專用 Codex 視窗與 helper，重用既有服務。
+- VERIFIED：專用 profile 與 loopback 埠所有權核對通過；真實 DOM 顯示導覽列圖示、「New chat」下方文字入口及已載入的看板。`node tests/taskboard-app.test.mjs` 四組檢查通過：API 連線、主題同步、圖示選取、重新整理後保留單一圖示／文字入口／看板。
+- 本次只啟用既有整合並更新文件，未修改產品程式、卡片或派工設定，未呼叫模型；未 stage、commit、push。入口位於專用 Codex 視窗，普通啟動的視窗仍沿用原生介面。
+- 實際啟動一度回報等待原生導覽列，App 完成載入後正常；本機執行沙箱初始化失敗，經限定範圍的核准於沙箱外完成檢查與啟動。完整關閉後再由桌面捷徑冷啟動本輪 NOT VERIFIED。
+
 ## 2026-10-12：新電腦安裝與「建立派工卡片」工具漏傳
 
 - 新電腦安裝 VERIFIED：全域 mod 同步＋settings 登記（--check 就緒、validate 通過）、桌面 Codex.lnk、服務 47824 回應 200，Browser 窗格顯示 Codex 已連線、Claude Code 可用（CLI 2.1.294）、30 Codex／351 Claude sessions 同步；/reload-plugins 後本 session 載入 mod。NOT VERIFIED：專用 Codex App 視窗（未啟動）、新 session 自動開窗。安裝腳本「找不到 Python」為 cmd 解析誤判，不影響啟動。
