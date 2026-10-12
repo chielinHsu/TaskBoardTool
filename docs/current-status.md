@@ -1,5 +1,11 @@
 # 目前狀態
 
+## 2026-10-12：看板名字來自登入帳號；服務識別改用 meta 標記
+
+- 左上角與頁籤的名字不再寫死：Codex App 嵌入（`embed=1`）顯示 Codex 登入帳號（id_token 的 `name`），Claude App Browser 窗格與瀏覽器顯示 Claude Code 登入帳號（`oauthAccount.displayName`）；缺的用另一個，都沒有顯示「使用者」；每次開頁面重新讀。
+- 啟動器與 helper 辨識看板服務改看 `<meta name="taskboard-service" content="caspar-taskboard">`，不再比對名字；改名字不會再讓 Codex App 的 frame 反覆重載。
+- VERIFIED：靜態檢查、重啟後兩種頁面的標題、app-status `ready`／`frameLoaded`、Python 50 測試。NOT VERIFIED：Codex App 視窗內實際畫面、`node tests/taskboard-app.test.mjs`。
+
 ## 2026-10-12：驗收完成時清除舊的失敗訊息
 
 - 使用者回報待審核卡片出現「需要處理」，拖到已完成時 toast 顯示舊的 OAuth 錯誤。原因：Claude CLI 登入過期，派工 run 失敗，錯誤存為卡片 `error`；狀態事件 message 優先採用卡片 error，而改為 done 不清除，所以驗收事件重播失敗訊息。

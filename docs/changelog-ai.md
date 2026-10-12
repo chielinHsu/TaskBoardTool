@@ -1,5 +1,11 @@
 # AI 工作紀錄
 
+## 2026-10-12：看板名字改讀 Codex／Claude Code 登入帳號；服務識別改用 meta 標記
+
+- 使用者問左上角「Caspar」的來源：寫死在 index.html。先改為電腦使用者名稱，使用者改要登入帳號：server.py 新增 `claude_account_name`（`~/.claude.json` 的 `oauthAccount.displayName`）、`codex_account_name`（`~/.codex/auth.json` id_token 的 `name` claim，只解碼名字與 email，不保存 token）、`board_user_name(tool)`：`embed=1` 用 Codex 帳號，其餘用 Claude Code 帳號，缺的用另一個，都沒有顯示「使用者」；送頁面時填入 `__BOARD_USER__`。
+- 換名後 Codex App 畫面一直閃：app-injector.mjs 以 `html.includes('Caspar')` 辨識服務，失敗就反覆重載。index.html 加 `<meta name="taskboard-service" content="caspar-taskboard">`，app-injector.mjs、start.ps1、stop.ps1 改看它。
+- VERIFIED：py_compile、node --check、.ps1 Parser 無錯誤；重啟後 47824 的 `/` 為「CasparHsu 的任務看板」、`/?embed=1` 為「Hsu Shih Lin 的任務看板」；stop-app／start-app 後 app-status `ready`、`frameLoaded: true`；Python 50 測試通過。NOT VERIFIED：Codex App 視窗實際畫面、`tests/taskboard-app.test.mjs`。已 commit 並 push（使用者授權）。
+
 ## 2026-10-12：驗收完成時清除舊的失敗訊息
 
 - 解釋「需要處理」徽章（卡片 error 非空）與拖到已完成時重播舊錯誤的原因（Store.put 的狀態事件沿用卡片 error，PATCH done 不清除）。使用者決定：done 時清除 error；後續對話或二次修正解決後卡片要更新。

@@ -30,7 +30,7 @@ $taskboardUrl = "http://127.0.0.1:$Port"
 $taskboardAlreadyRunning = $false
 try {
     $taskboardResponse = Invoke-WebRequest -Uri $taskboardUrl -TimeoutSec 2 -UseBasicParsing
-    $taskboardAlreadyRunning = $taskboardResponse.Content -like '*Caspar*' -and $taskboardResponse.Content -like '*X-Board-Token*'
+    $taskboardAlreadyRunning = $taskboardResponse.Content -like '*content="caspar-taskboard"*' -and $taskboardResponse.Content -like '*X-Board-Token*'
     if (-not $taskboardAlreadyRunning) { throw 'The port is occupied by another service.' }
 } catch {
     if ($_.Exception.Message -eq 'The port is occupied by another service.') { throw }

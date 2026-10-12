@@ -22,7 +22,7 @@ async function loadFrame(connection,panel) {
   const response=await fetch(config.boardUrl+'/?embed=1',{signal:AbortSignal.timeout(5000)});
   const html=await response.text();
   const token=html.match(/const TOKEN='([^']+)'/)?.[1];
-  if(!response.ok || !token || !html.includes('Caspar')) throw Error('Taskboard service identity mismatch');
+  if(!response.ok || !token || !html.includes('name="taskboard-service" content="caspar-taskboard"')) throw Error('Taskboard service identity mismatch');
   connection.token=token;connection.capability=randomUUID();
   await connection.cdp.evaluate(`window.__casparTaskboard.prepare(${JSON.stringify(connection.capability)})`);
   const initialTheme=JSON.stringify(panel.theme||null).replace(/</g,'\\u003c');

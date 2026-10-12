@@ -2,6 +2,8 @@
 from __future__ import annotations
 import argparse
 import atexit
+import base64
+from html import escape as html_escape
 import hmac
 import json
 import logging
@@ -23,6 +25,50 @@ from claude_adapter import ClaudeAdapter, resolve_command
 from folder_picker import FolderPicker
 
 ROOT = Path(__file__).resolve().parent
+
+
+def claude_account_name() -> str:
+    """Claude Code 登入帳號的顯示名稱：讀 ~/.claude.json（或 CLAUDE_CONFIG_DIR）的 oauthAccount；讀不到回空字串。"""
+    try:
+        config_dir = os.environ.get('CLAUDE_CONFIG_DIR')
+        path = (Path(config_dir) if config_dir else Path.home()) / '.claude.json'
+        account = json.loads(path.read_text(encoding='utf-8')).get('oauthAccount') or {}
+        for key in ('displayName', 'fullName', 'emailAddress'):
+            value = str(account.get(key) or '').strip()
+            if value:
+                return value.split('@')[0] if key == 'emailAddress' else value
+    except Exception:
+        pass
+    return ''
+
+
+def codex_account_name() -> str:
+    """Codex 登入帳號的顯示名稱：只解碼 ~/.codex/auth.json（或 CODEX_HOME）id_token 的 name／email 兩個 claim，不保存、不記錄 token。"""
+    try:
+        path = Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex') / 'auth.json'
+        token = str((json.loads(path.read_text(encoding='utf-8')).get('tokens') or {}).get('id_token') or '')
+        payload = token.split('.')[1]
+        claims = json.loads(base64.urlsafe_b64decode(payload + '=' * (-len(payload) % 4)))
+        name = str(claims.get('name') or '').strip()
+        if name:
+            return name
+        email = str(claims.get('email') or '').strip()
+        if email:
+            return email.split('@')[0]
+    except Exception:
+        pass
+    return ''
+
+
+def board_user_name(tool: str) -> str:
+    """看板左上角與頁籤的名字：嵌在 Codex App（embed=1）時用 Codex 的登入帳號，其餘用 Claude Code 的登入帳號；
+    該工具沒有登入資料時用另一個，兩個都沒有時顯示「使用者」。每次送出頁面時重新讀取，換帳號後重新整理即可。"""
+    readers = {'codex': codex_account_name, 'claude': claude_account_name}
+    for key in (('codex', 'claude') if tool == 'codex' else ('claude', 'codex')):
+        name = readers[key]()
+        if name:
+            return name
+    return '使用者'
 STATUSES = ('backlog', 'todo', 'in_progress', 'in_review', 'done')
 STATUS_LABELS = {'backlog': '列管', 'todo': '待辦', 'in_progress': '進行中', 'in_review': '待審核', 'done': '已完成'}
 PRIORITIES = ('low', 'medium', 'high', 'urgent')
@@ -1092,8 +1138,9 @@ class Handler(BaseHTTPRequestHandler):
         if method == 'GET' and path == '/health':
             return self.reply({'ok': True, 'service': 'caspar-taskboard'})
         if method == 'GET' and path in ('/', '/index.html'):
-            html = (ROOT / 'index.html').read_text(encoding='utf-8').replace('__BOARD_TOKEN__', self.server.token)
             embed = query.get('embed') == ['1']
+            user_name = board_user_name('codex' if embed else 'claude')
+            html = (ROOT / 'index.html').read_text(encoding='utf-8').replace('__BOARD_TOKEN__', self.server.token).replace('__BOARD_USER__', html_escape(user_name))
             return self.reply(html, mime='text/html; charset=utf-8', embed=embed)
         if not path.startswith('/api/'):
             raise BoardError('找不到此頁面。', 404)
