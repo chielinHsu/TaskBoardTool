@@ -1,5 +1,11 @@
 # AI 工作紀錄
 
+## 2026-10-12：Claude App 對話鏡像為看板卡片（mod turn 事件 → /api/claude-turns）
+
+- 使用者反映唯讀同步卡片的欄位（進行中／待審核）與建立派工卡片後的列管對不上；先提出兩個方向（欄位只反映看板流程／建卡時匯入最後回合），使用者改提由 mod 自動建卡並派工；評估排程派工會用 `claude -p` 重跑同一句需求，改為鏡像 run。使用者決定：同 session 不重複建卡（每句一筆 run）、已完成卡片重開。
+- server.py：`Board.mirror_turn`＋`POST /api/claude-turns`；`update` 拒絕移動鏡像執行中的卡片（同狀態 PATCH 不再撞「請用開始執行」）、`start` 拒絕 in_progress 卡片；API_VERSION 1.6.0。index.html：`mirroring(t)` 控制拖曳、徽章、詳情停用，run 標籤「Claude App 對話」。register.tsx：`mirror()`、`turn.start`／`turn.complete` hook（略過 subagent）；taskboard.test.ts 新增鏡像測試。新增 tests/test_taskboard_mirror.py；版本斷言改 1.6.0（plans、tools、sessions-app）。
+- VERIFIED：py_compile、Python 57 測試、mod validate／test 7 項、隔離服務與 Browser 窗格實測進行中→待審核。後續由本 Claude App session 實測：mod turn 事件真實送達（舊碼 404 → 重啟正式服務為 1.6.0 後 200）、首句建卡進「進行中」、sourceId 等於 transcript id、唯讀卡被取代、徽章與停用控制項正確。NOT VERIFIED：真實回合結束後進待審核、DOM 測試（需專用 renderer 與可用 `python`）。
+- 同日續（使用者看過鏡像卡聊天紀錄後的三點要求）：聊天紀錄回合改 `details` 摺疊（只展開最新）、你／Claude 訊息配色（`msg-user`／`msg-progress`／`msg-agent`，全用既有 token）；簡介擬稿：`brief` seed→drafted→manual、`event=brief`、`first_prompt`、手改鎖定、舊卡重播種（ADR-018）；mod `draftBrief` 用 `$.model.complete` haiku／low；服務重啟復原跳過鏡像中的卡片（實測重啟時 run 被標中止）。API 1.7.0；版本斷言改 1.7.0。新增 Python 測試 4 項、mod 鏡像測試改為含 brief。VERIFIED：Python 61、mod 7、Browser 窗格實測摺疊與配色、真實回合結束→待審核。NOT VERIFIED：真實 haiku 擬稿回寫。實際失敗：bash `python`／`py -3.12` 為失效 Store alias；Python `write_text` 把 LF 檔寫成 CRLF，已逐檔還原。已執行 `setup-claude-mod.mjs` 同步全域副本。ADR-017。
 ## 2026-10-12：看板名字改讀 Codex／Claude Code 登入帳號；服務識別改用 meta 標記
 
 - 使用者問左上角「Caspar」的來源：寫死在 index.html。先改為電腦使用者名稱，使用者改要登入帳號：server.py 新增 `claude_account_name`（`~/.claude.json` 的 `oauthAccount.displayName`）、`codex_account_name`（`~/.codex/auth.json` id_token 的 `name` claim，只解碼名字與 email，不保存 token）、`board_user_name(tool)`：`embed=1` 用 Codex 帳號，其餘用 Claude Code 帳號，缺的用另一個，都沒有顯示「使用者」；送頁面時填入 `__BOARD_USER__`。

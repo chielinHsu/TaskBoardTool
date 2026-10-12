@@ -1,5 +1,47 @@
 # 目前架構
 
+## Claude App 對話鏡像（2026-10-12）
+
+修改前：Claude App 的 session 只經 claude_sessions 索引投影成唯讀卡片，欄位等於訊號狀態；要操作必須「建立派工卡片」，固定進列管。
+
+```mermaid
+flowchart LR
+ App[Claude App session] --> Index[claude_sessions 索引／transcript 尾端訊號]
+ Index --> State[state 合併唯讀卡片，欄位＝訊號狀態]
+ State --> UI[看板：不可拖、不可改狀態]
+ UI -->|建立派工卡片| Import[import_chat → 列管]
+```
+
+修改後：mod 把回合事件送到看板，卡片跟著回合走；唯讀投影只剩沒有鏡像卡片的 session。
+
+```mermaid
+sequenceDiagram
+ participant App as Claude App session（taskboard-pane mod）
+ participant API as server.py mirror_turn
+ participant DB as SQLite 卡片
+ App->>API: turn.start {sessionId, turnId, text, cwd, model}
+ API->>API: active run 同 session 或未綁定 → board-run 忽略
+ API->>DB: 無卡片→建卡（high／claude／sourceId）；append run kind=mirror；status=in_progress
+ App->>API: turn.complete {turnId, answer, reason, aborted}
+ API->>DB: run result／status；卡片→in_review（aborted→backlog；nextRun→todo）
+ DB-->>App: 看板與窗格輪詢顯示；鏡像執行中不可拖、不可派工、不可送後續
+```
+
+擬稿補充（同日）：建卡時簡介以 transcript 最早一句播種（`brief=seed`），start 回應 `wantsBrief`／`briefSource`；mod 以 `$.model.complete`（haiku／low）擬「需求簡介＋驗收條件」送 `event=brief`，只在 `seed`／`drafted` 接受；`update` 改 description → `manual`，之後拒絕。服務重啟的復原跳過最後一筆為 `mirror` 的進行中卡片。
+
+```mermaid
+sequenceDiagram
+ participant App as Claude App session（mod）
+ participant Model as $.model.complete（haiku）
+ participant API as server.py mirror_turn／apply_brief
+ App->>API: turn.start（首句）
+ API-->>App: created, wantsBrief=true, briefSource=第一句
+ App->>Model: 擬需求簡介＋驗收條件（繁中固定格式）
+ Model-->>App: text
+ App->>API: event=brief {description}
+ API->>API: brief ∈ {seed, drafted} → description=draft, brief=drafted；manual → 拒絕
+ Note over API: 後續 start／complete 不改 description；使用者 PATCH description → manual
+```
 ## Claude App 外掛安裝快照同步（2026-10-11）
 
 Observed Fact：App 安裝的 `hooks/register.tsx`／`types/index.d.ts` 與舊提交 `2a2609d` 一致，安裝目錄不是連結；只修改專案不會自動更新。

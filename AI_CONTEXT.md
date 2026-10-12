@@ -15,7 +15,7 @@ Python 標準函式庫 HTTP server／SQLite／subprocess RPC；原生 HTML／CSS
 | outputs/taskboard/claude_sessions.py | 唯讀 Claude App session 中繼資料索引、transcript 尾端訊號與回合閱讀 |
 | outputs/taskboard/session_sync.py | 唯讀 Codex session 回合訊號與衍生追蹤卡片（session_card 支援 tool） |
 | .claude/launch.json | Claude App Browser 窗格附掛看板服務的 preview 設定（taskboard） |
-| outputs/taskboard/claude-mod/taskboard-pane | Claude Code mod：停靠側邊窗格、/taskboard、窗格建卡、`import_plan` 工具；`claude plugin validate/test`（需 CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1） |
+| outputs/taskboard/claude-mod/taskboard-pane | Claude Code mod：停靠側邊窗格、/taskboard、窗格建卡、`import_plan` 工具、`turn.start`／`turn.complete` 鏡像 session 回合到 `/api/claude-turns`；`claude plugin validate/test`（需 CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1） |
 | outputs/taskboard/setup-claude-mod.mjs | 把 claude-mod/taskboard-pane 以雜湊比對同步到全域 `~/.claude/mods/taskboard-pane`，並登記到 `~/.claude/settings.json` env.CLAUDE_CODE_PLUGIN_DIRS（與 usage-bar 等 mod 相同；跨 session／跨電腦載入）；檢查前置條件；--check 唯讀，寫入前備份至 work |
 | outputs/taskboard/update-claude-mod.ps1 | 舊流程：將原始碼同步至 Claude App session 專屬 .claude/dev-mods 安裝副本；-Check 唯讀比對，更新前備份至 work，更新後雜湊核對 |
 | outputs/taskboard/plan_import.py | 終端機／Codex 匯入計畫 JSON 到 `/api/plans`（stdlib、loopback） |
@@ -29,7 +29,7 @@ Python 標準函式庫 HTTP server／SQLite／subprocess RPC；原生 HTML／CSS
 | .agents／.claude／scripts/ai | 共用協作骨架、Claude 設定及檢查 |
 
 ## 建置與測試
-在根目錄執行，不需建置套件：
+在根目錄執行，不需建置套件（本機 `python`／`py -3.12` 若是失效的 Store alias，改用 `py -3`）：
 ```powershell
 node --check outputs/taskboard/app-panel.js
 node --check outputs/taskboard/app-injector.mjs
@@ -57,7 +57,8 @@ node scripts/ai/bench-model-routing.mjs
 ## 限制與不變條件
 - 看板 mod 的正規載入方式是全域副本 `~/.claude/mods/taskboard-pane` 加使用者層 `~/.claude/settings.json` 的 `env.CLAUDE_CODE_PLUGIN_DIRS`（setup-claude-mod.mjs 同步副本並登記；只對新 session 生效；git pull 後重跑即同步，已載入的 session 熱重載）。副本中引擎寫入的 `.claude-plugin/types/`、`tsconfig.json` 不覆寫；來源若被 --plugin-dir 直接載入也會產生這兩者，已 gitignore。`.claude/dev-mods/<session id>/taskboard-pane` 是 App「開發 mod」留下的 session 專屬快照，只在該 session 載入，不是原始碼連結；仍使用它時才需 update-claude-mod.ps1 同步（只更新五個已知檔案、保留 tsconfig），再 `/reload-plugins`、`/taskboard`。不碰官方安裝檔或認證。
 - 顯示名稱「列管」沿用 `backlog`，不遷移任務資料。專案候選來自 state 中既有卡片／唯讀 session；單一路徑自動載入，同名多路徑需明確選擇，保留手動路徑。`POST /api/folders/select` → `GET /api/folders/<id>`／`POST /api/folders/<id>/cancel`，沿用 token／Host／Origin／capability 保護；單一 Windows 視窗、300 秒逾時、服務關閉清理，選擇不自動儲存。
-- 執行工具 `tool` 為 codex／claude，任務、run、nextRun、同步卡片與對話皆帶工具；舊資料讀取時預設 codex，不背景改寫。session 去重與延續用 (tool, id)；延續只能同工具，換工具為 `handoff` 新對話並帶摘要。nextRun 固定保存 tool／model／effort／cwd，排隊期間不可更改，可取消排隊。export schemaVersion=5，API 1.5.0。
+- 執行工具 `tool` 為 codex／claude，任務、run、nextRun、同步卡片與對話皆帶工具；舊資料讀取時預設 codex，不背景改寫。session 去重與延續用 (tool, id)；延續只能同工具，換工具為 `handoff` 新對話並帶摘要。nextRun 固定保存 tool／model／effort／cwd，排隊期間不可更改，可取消排隊。export schemaVersion=5，API 1.7.0。
+- Claude App 對話鏡像：mod 的 `turn.start`／`turn.complete` 送 `POST /api/claude-turns`；session 首句自動建卡直接進進行中（priority high、tool claude、sourceId），每句一筆 `mirror` run，回合結束進待審核（中止→列管、排有 nextRun→待辦），已完成卡重開；鏡像卡不佔單一任務鎖、排程不領、執行中不可移動／派工／送後續需求；看板自己派的 Claude run（active run 未綁定或同 session）不鏡像；真實 App 觸發、session id 等於 transcript id、回合結束進待審核已實測。卡片 `brief` 狀態 seed→drafted→manual：建卡簡介以 transcript 最早一句播種，mod 用 `$.model.complete`（haiku／low）擬「需求簡介＋驗收條件」送 `event=brief`，只在 seed／drafted 接受；使用者改過 description 即 manual 永不覆寫；後續回合不改簡介與標題；服務重啟復原跳過鏡像中的卡片。聊天紀錄每回合 `details` 摺疊（只開最新）、你／進度／回報三種配色。
 - 依賴與計畫：`task_dependencies` 有向表投影 `dependsOn`／`blocks`，拒絕自我／循環；排程與 start 跳過被阻擋卡片；卡片進 `done` 時釋放前置全完成的積壓卡片到待辦。`POST /api/plans`（plan_import.py、網頁匯入計畫、mod 工具 import_plan）依 Kahn 順序建卡，`ROLE_ROUTING` 把 Claude 角色對應 model／effort；`effort` 以 `--effort` 傳給 Claude CLI，啟動前依 `supportedEffortLevels` 驗證。失敗 run 重試採卡片目前 model／effort。
 - Claude Code 為 CLI 整合：`claude -p --input-format/--output-format stream-json`、`--session-id`／`--resume`、`--model`、`--permission-mode acceptEdits --permission-prompt-tool stdio`；模型清單由 initialize 握手取得（不耗額度）；control 協定無公開文件，依本機 2.1.283 實測。看板不內嵌 Claude App；`claude://` 深連結不能開啟看板建立的 session。真實 Claude 派工與核准往返 NOT VERIFIED。
 - Claude session 同步只讀 claude-code-sessions 的 local_*.json 與 `~/.claude/projects` transcript 尾端 256 KiB；Store 版（MSIX）Claude App 的 AppData 被虛擬化，session 檔實際在 `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code-sessions`，只有 App 子程序能經 `%APPDATA%\Claude\…` 看到；`resolve_desktop_root()` 先找套件路徑再找 Roaming，能力值 `sessionRoot` 顯示實際路徑，桌面啟動的服務因此也能列出；封存不列、不寫 DB、不派工；transcript 格式官方標示為內部格式。Claude App 側欄群組不在磁碟：mod 以 `$.mcp.call('ccd_session_mgmt','list_sessions')` 讀取並 POST `/api/claude-groups`，看板存於設定 `claudeGroups`（desktopId→群組名）作為 Claude 卡片專案名；UI 有工具篩選與依工具分組的專案選單。

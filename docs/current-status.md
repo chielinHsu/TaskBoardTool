@@ -1,5 +1,17 @@
 # 目前狀態
 
+## 2026-10-12：Claude App 對話自動鏡像為看板卡片
+
+- 使用者指出唯讀同步卡片出現在「待審核」卻不能拖，按「建立派工卡片」後又退回列管，狀態對不上。改為 taskboard-pane mod 在 `turn.start`／`turn.complete` 把 session 的回合送到 `POST /api/claude-turns`：session 首句自動建卡並直接進「進行中」（priority 高、tool claude、綁定 session、cwd 存在才填），回合結束進「待審核」並把回覆存成 run 結果；同 session 後續每句都是同一張卡的 `mirror` run，已完成的卡收到新需求重開。看板不派工、不延續、不停止這些 session；看板自己派的 Claude run 不鏡像。
+- 鏡像執行中的卡片不可拖、不能改狀態、不能開始執行或送後續需求，回合結束後解除；徽章「Claude App 對話執行中」。中止的回合回列管、錯誤／拒絕記為失敗但仍進待審核、排有 nextRun 的卡回待辦。API 1.6.0。
+- VERIFIED：Python 57 測試（含新 `test_taskboard_mirror.py` 7 項）、`claude plugin validate`／`test` 7 項、隔離服務（47999）＋Browser 窗格實測：送 start 後卡片在進行中且不可操作，送 complete 後移到待審核。全域 mod 副本已以 setup-claude-mod.mjs 同步（新 session 生效）。真實 Claude App session 實測：turn 事件確實送達 `/api/claude-turns`，`$.session.id()` 等於 transcript id（非桌面 `local_…` id），首句在正式看板建卡進「進行中」並取代唯讀追蹤卡，徽章／拖曳鎖定／詳情停用皆符合預期；正式 47824 服務已重啟為 1.6.0。NOT VERIFIED：真實回合結束後移到待審核（隔離服務已驗證）；Codex App DOM 測試未跑。觀察：`claude-groups` 從未送達，鏡像卡 project 取資料夾名。
+
+### 同日續：聊天紀錄摺疊與配色、簡介擬稿、重啟不中止鏡像
+
+- 使用者看了鏡像卡的聊天紀錄後要求：回合要能摺疊、你／Claude 的訊息用顏色區分、需求簡介與驗收條件未填時依第一句需求擬一份且後續對話不得改動。
+- index.html：聊天紀錄每回合一個 `details.chat-turn`（只展開最新一則；summary 為「回合 N · 狀態 · 首句摘要 · 時間」，回合 ID 放 title），你的訊息 `msg-user`（accent-light 底＋accent 左框）、進度 `msg-progress`（灰、虛線）、回報 `msg-agent`（hover 底）；詳情簡介在 `brief` 為 seed／drafted 時附說明。
+- server.py：`brief` 狀態 seed→drafted→manual、`event=brief`／`apply_brief`、`first_prompt`（transcript 最早一句）、`update` 改 description 即 manual、舊鏡像卡重播種、重啟復原跳過鏡像中的卡片；API 1.7.0。mod：`draftBrief` 以 `$.model.complete`（haiku／low）擬稿回寫。
+- VERIFIED：Python 61 測試（鏡像 11 項）、mod validate／test 7 項、index.html script 解析、正式服務重啟為 1.7.0、Browser 窗格實測聊天紀錄三回合摺疊與配色；真實回合結束移到待審核（run 1 completed）。實際失敗：重啟當下服務把鏡像中的 run 標為中止（已修，回合結束訊號到達後自癒）。NOT VERIFIED：真實 `$.model.complete` 擬稿與 brief 回寫（需下一句觸發）；DOM 測試未跑。本機 `python`／`py -3.12` 為失效的 Store alias，用 `py -3`（3.9）。
 ## 2026-10-12：看板名字來自登入帳號；服務識別改用 meta 標記
 
 - 左上角與頁籤的名字不再寫死：Codex App 嵌入（`embed=1`）顯示 Codex 登入帳號（id_token 的 `name`），Claude App Browser 窗格與瀏覽器顯示 Claude Code 登入帳號（`oauthAccount.displayName`）；缺的用另一個，都沒有顯示「使用者」；每次開頁面重新讀。

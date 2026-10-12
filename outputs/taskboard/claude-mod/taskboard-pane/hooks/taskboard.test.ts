@@ -176,6 +176,42 @@ test('the mod relays Claude App sidebar groups to the board as session projects'
   await ui.unmount()
 })
 
+test('turns typed in this session are mirrored to the board as the runs of one card', async ($, on) => {
+  const clock = mock.clock(on)
+  const posted: any[] = []
+  on('http.fetch', async (_$, e) => {
+    if (e.url.endsWith('47824/')) return { value: { status: 200, ok: true, headers: {}, text: PAGE } }
+    if (e.url.endsWith('/api/claude-turns')) { const body = JSON.parse(e.init?.body || '{}'); posted.push(body); return { value: { status: 200, ok: true, headers: {}, text: body.event === 'start' ? '{"mirrored":true,"created":true,"wantsBrief":true,"briefSource":"幫我裝任務看板"}' : '{"mirrored":true}' } } }
+    if (e.url.endsWith('/api/state')) return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify(STATE) } }
+    return { value: { status: 200, ok: true, headers: {}, text: '{}' } }
+  })
+  on('session.id', () => ({ value: 'sess-test' }))
+  on('session.cwd', () => ({ value: 'C:\test' }))
+  on('session.model', () => ({ value: 'opus' }))
+  const asked: any[] = []
+  on('model.complete', (_$, e) => { asked.push(e); return { value: { isAnswered: true, text: '需求簡介\n裝好任務看板。\n\n驗收條件\n- App 可開啟看板', usage: {} } } })
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_$, e) => ({ text: e.answer }))
+  await $.turn.start({ text: '幫我裝任務看板', turnId: 'turn-1' })
+  await $.turn.complete({ turnId: 'turn-1', answer: '已安裝', durationMs: 10, isAborted: false, reason: 'answer' })
+  await clock.settle()
+  expect([...posted.map(p => p.event)].sort()).toEqual(['brief', 'complete', 'start'])
+  expect(posted[0].event).toBe('start')
+  expect(posted[0].text).toBe('幫我裝任務看板')
+  expect(posted[0].turnId).toBe('turn-1')
+  expect(typeof posted[0].cwd).toBe('string')
+  expect(typeof posted[0].sessionId).toBe('string')
+  const complete = posted.find(p => p.event === 'complete')
+  expect(complete.answer).toBe('已安裝')
+  expect(complete.aborted).toBe(false)
+  // the brief is drafted once from the first prompt by a cheap haiku completion and sent back to the board
+  expect(asked.length).toBe(1)
+  expect(JSON.stringify(asked[0])).toContain('haiku')
+  expect(JSON.stringify(asked[0])).toContain('幫我裝任務看板')
+  expect(posted.find(p => p.event === 'brief').description).toContain('驗收條件')
+  expect(posted.every(p => p.tool === 'claude' && p.sessionId === posted[0].sessionId)).toBe(true)
+})
+
 test('a reopen button with hotkey 9 sits above the prompt only while the pane is closed, beneath other bands', async ($, on) => {
   mock.clock(on)
   on('http.fetch', async () => ({ value: { status: 200, ok: true, headers: {}, text: '{}' } }))

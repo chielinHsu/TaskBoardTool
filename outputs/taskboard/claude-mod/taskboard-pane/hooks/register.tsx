@@ -172,6 +172,38 @@ async function syncGroups($: Engine): Promise<void> {
   } catch { /* the connector may be absent (terminal session) or the board down; the next tick retries */ }
 }
 
+// Every turn of this session is mirrored to the board as a run of one card (the session's first prompt
+// creates it, in 進行中; the turn's end moves it to 待審核). The board tells a session it dispatched itself
+// apart from one typed in the App; relaying never blocks or alters the turn.
+async function mirror($: Engine, payload: Record<string, unknown>): Promise<void> {
+  try {
+    const sessionId = await $.session.id()
+    const cwd = await $.session.cwd().catch(() => '')
+    const model = await $.session.model().catch(() => '')
+    const result = await api($, '/api/claude-turns', 'POST', { tool: 'claude', sessionId, cwd, model, ...payload })
+    await refresh($)
+    if (payload.event === 'start' && result?.wantsBrief) void draftBrief($, sessionId, cwd, model, String(result.briefSource || payload.text || ''))
+  } catch { /* the board may be down; the next turn relays again */ }
+}
+
+// The card's 需求簡介／驗收條件 are drafted once, from the session's FIRST prompt (the board sends it back as
+// briefSource), by a cheap completion (haiku, low effort). The board keeps the draft only while nobody edited
+// the brief by hand, and later prompts of the session never rewrite it; a failed or empty draft leaves the
+// first prompt itself as the brief. Drafting never blocks the turn.
+async function draftBrief($: Engine, sessionId: string, cwd: string, model: string, source: string): Promise<void> {
+  if (!source.trim()) return
+  try {
+    const reply = await $.model.complete({
+      model: 'haiku', effort: 'low', maxTokens: 800, timeoutMs: 60000,
+      system: '你是任務看板的助理。使用者在 Claude Code 對話中送出了第一句需求，請把它整理成任務卡片的「需求簡介」與「驗收條件」。用繁體中文，只輸出以下格式，不加其他標題、前言或結語：\n需求簡介\n（2–4 句，說明要完成什麼、範圍與限制）\n\n驗收條件\n- （可檢查的條目，3–6 條）',
+      prompt: source.slice(0, 6000),
+    })
+    if (!reply.isAnswered || !reply.text.trim()) return
+    await api($, '/api/claude-turns', 'POST', { tool: 'claude', sessionId, cwd, model, event: 'brief', description: reply.text.trim() })
+    await refresh($)
+  } catch { /* drafting is best-effort; the first prompt stays as the brief */ }
+}
+
 function startPolling($: Engine): void {
   poll?.cancel()
   poll = $.clock.every(POLL_MS, () => { void refresh($) })
@@ -227,6 +259,16 @@ export const register: Register = on => {
     } catch (error) {
       return { deny: '匯入計畫失敗：' + (error instanceof Error ? error.message : String(error)) }
     }
+  })
+
+  on('turn.start', async ($, e, next) => {
+    void mirror($, { event: 'start', turnId: e.turnId, text: e.text })
+    return next(e)
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    if (!e.agentId) void mirror($, { event: 'complete', turnId: e.turnId, answer: e.answer, reason: e.reason, aborted: e.isAborted })
+    return next(e)
   })
 
   on('command.run', { command: 'taskboard' }, async $ => {

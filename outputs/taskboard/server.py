@@ -10,6 +10,7 @@ import logging
 import os
 from pathlib import Path
 import queue
+import re
 import secrets
 import shutil
 import sqlite3
@@ -73,7 +74,7 @@ STATUSES = ('backlog', 'todo', 'in_progress', 'in_review', 'done')
 STATUS_LABELS = {'backlog': '列管', 'todo': '待辦', 'in_progress': '進行中', 'in_review': '待審核', 'done': '已完成'}
 PRIORITIES = ('low', 'medium', 'high', 'urgent')
 LOG = logging.getLogger('taskboard')
-API_VERSION = '1.5.0'
+API_VERSION = '1.7.0'
 EXPORT_SCHEMA = 5
 EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
 # The five Claude roles of MODEL_ROUTING.md as (model alias, effort); Codex keeps its own default model.
@@ -154,9 +155,12 @@ class Store:
         self.db.commit()
         if self.setting('automatic') is None:
             self.set_setting('automatic', True)
-        # Never assume that an interrupted service completed a task.
+        # Never assume that an interrupted service completed a task. A turn mirrored from the Claude App
+        # (its last run is `mirror`) runs in the App, not here: it outlives this service and its end still arrives.
         for task in self.all():
             if task['status'] == 'in_progress':
+                if task.get('runs') and task['runs'][-1].get('kind') == 'mirror':
+                    continue
                 task['status'] = 'in_review'
                 task['error'] = '服務曾重新啟動，請檢查執行聊天的結果，再決定是否重試。'
                 task['turnId'] = ''
@@ -602,12 +606,17 @@ class Board:
                 raise BoardError('任務已更新，請重新打開後再儲存。', 409)
             if task_id == self.active_id:
                 raise BoardError('執行中的任務請先停止；留言可以使用下方的新增留言。', 409)
+            if task['status'] == 'in_progress' and body.get('status', 'in_progress') != 'in_progress':
+                raise BoardError('這張卡片正由 Claude App 的對話執行中，等回合結束後再移動。', 409)
+            previous_description = task['description']
             for key in ('title', 'description', 'project', 'cwd', 'resultUrl'):
                 if key in body:
                     task[key] = clean_text(body[key], key, 1000 if key == 'title' else 20000)
+            if task.get('brief') and task['description'] != previous_description:
+                task['brief'] = 'manual'  # a hand-edited brief is the card's own; the session's drafts never replace it again
             if not task['title']:
                 raise BoardError('請填寫任務標題。')
-            if 'status' in body:
+            if 'status' in body and body['status'] != task['status']:
                 if body['status'] not in STATUSES or body['status'] == 'in_progress':
                     raise BoardError('請用「開始執行」將任務移到進行中。')
                 if body['status'] == 'todo' and task['status'] != 'todo':
@@ -831,6 +840,121 @@ class Board:
     def read_chat(self, thread_id, tool='codex'):
         return self.adapter(tool or 'codex').read_chat(thread_id)
 
+    # ----- Claude App turn mirror -----
+    def mirror_turn(self, body):
+        """Turns of a Claude App session, relayed by the taskboard-pane mod as they start and end.
+
+        The session's first prompt creates its card straight into 進行中; every later prompt is one more
+        run on the same card (a finished card reopens); the end of a turn moves the card to 待審核 with the
+        answer as the run's report. The board never launches, resumes or stops these sessions, and a session
+        the board itself dispatched is left to its adapter (its run is still unbound while the CLI starts).
+        """
+        event = body.get('event')
+        if event not in ('start', 'complete', 'brief'):
+            raise BoardError('event 需為 start、complete 或 brief。')
+        tool = clean_tool(body.get('tool') or 'claude')
+        session_id = str(body.get('sessionId') or '')
+        if not re.fullmatch(r'[A-Za-z0-9-]{1,64}', session_id):
+            raise BoardError('session ID 不正確。')
+        turn_id = clean_text(str(body.get('turnId') or ''), 'turn ID', 200)
+        text = clean_text(str(body.get('text') or ''), '需求')
+        with self.lock:
+            active = self.active_task()
+            if active:
+                run = active['runs'][-1] if active.get('runs') else {}
+                if run_tool(active, run) == tool and run.get('threadId', '') in ('', session_id):
+                    return {'mirrored': False, 'reason': 'board-run'}
+            task = next((t for t in self.store.all() if (tool, session_id) in task_session_keys(t)), None)
+            chat = self.chat(tool, session_id) or {}
+            model = clean_text(str(body.get('model') or chat.get('model') or ''), '模型', 200)
+            cwd = clean_text(str(body.get('cwd') or chat.get('cwd') or ''), '工作資料夾', 2000)
+            if event == 'brief':
+                return self.apply_brief(task, body) if task else {'mirrored': False, 'reason': 'no-card'}
+            created = False
+            if task is None:
+                if event != 'start' or not text:
+                    return {'mirrored': False, 'reason': 'no-card'}
+                # The brief (需求簡介／驗收條件) is seeded from the session's FIRST prompt — the transcript's earliest
+                # readable turn when the card is only created later — and the mod drafts it once from that seed;
+                # later prompts of the session never rewrite it, only the person editing the card does.
+                first_text = self.first_prompt(tool, session_id) or text
+                chat_title = chat.get('title', '') if chat.get('title', '') != session_id else ''
+                title = chat_title or next((line.strip() for line in first_text.splitlines() if line.strip()), first_text)[:120]
+                task = self.create({'title': title, 'description': first_text, 'priority': 'high', 'tool': tool,
+                                    'cwd': cwd if cwd and Path(cwd).is_absolute() and Path(cwd).is_dir() else '',
+                                    'project': chat.get('project') or (Path(cwd).name if cwd else '個人任務')})
+                task['sourceId'], task['sourceTool'], task['brief'] = session_id, tool, 'seed'
+                task['comments'].append({'author': '系統', 'at': stamp(), 'text': '由 Claude App 的對話自動建立。看板鏡像這個 session 的回合：'
+                                         '送出需求時進入進行中，回合結束後進入待審核；看板不會派工、延續或停止它。'})
+                created = True
+            runs = task['runs']
+            if 'brief' not in task and runs and runs[0].get('kind') == 'mirror' and task['description'] == runs[0].get('request', ''):
+                # Seeded by the earlier mirror code from the prompt that created it and never edited since: still draftable,
+                # and re-seeded from the session's real first prompt when the transcript still shows it.
+                task['description'], task['brief'] = self.first_prompt(tool, session_id) or task['description'], 'seed'
+            last = runs[-1] if runs else None
+            previous_status = task['status']
+            if event == 'start':
+                if last and last.get('kind') == 'mirror' and last['status'] == 'running':
+                    if last.get('turnId') == turn_id:
+                        return {'mirrored': True, 'created': False, 'task': task}
+                    last.update(status='unknown', finishedAt=stamp(), error='回合結束訊號未送達（App 關閉或 mod 重新載入）。')
+                runs.append({'id': uuid.uuid4().hex[:12], 'kind': 'mirror', 'threadId': session_id, 'turnId': turn_id,
+                             'cwd': task['cwd'] or cwd, 'tool': tool, 'model': model, 'effort': '', 'fromTool': '',
+                             'request': text, 'result': '', 'error': '', 'status': 'running', 'startedAt': stamp()})
+                task.update(status='in_progress', workerThreadId=session_id, tool=tool, turnId=turn_id, result='', error='', retryAt=0)
+                if previous_status == 'done':
+                    task['comments'].append({'author': '系統', 'at': stamp(), 'text': '已完成的卡片收到 Claude App 對話的新需求，重新回到進行中。'})
+            else:
+                run = last if last and last.get('kind') == 'mirror' and (last['status'] == 'running' or last.get('turnId') == turn_id) else None
+                if run is None:
+                    runs.append({'id': uuid.uuid4().hex[:12], 'kind': 'mirror', 'threadId': session_id, 'turnId': turn_id,
+                                 'cwd': task['cwd'] or cwd, 'tool': tool, 'model': model, 'effort': '', 'fromTool': '',
+                                 'request': text, 'result': '', 'error': '', 'status': 'running', 'startedAt': stamp()})
+                    run = runs[-1]
+                answer = clean_text(str(body.get('answer') or ''), '回報', 100000)
+                reason = str(body.get('reason') or ('aborted' if body.get('aborted') is True else 'answer'))
+                status = {'aborted': 'interrupted', 'error': 'failed', 'refusal': 'failed'}.get(reason, 'completed')
+                error = '' if status != 'failed' else (clean_text(str(body.get('error') or ''), '錯誤', 2000)
+                                                      or ('模型拒絕回答。' if reason == 'refusal' else '回合發生錯誤。'))
+                run.update(turnId=run.get('turnId') or turn_id, result=answer, error=error, status=status, finishedAt=stamp())
+                task['workerThreadId'] = task['workerThreadId'] or session_id
+                task['result'], task['error'], task['turnId'] = answer, error, ''
+                if task.get('nextRun'):
+                    task['status'], task['queuedAt'] = 'todo', queue_stamp()
+                else:
+                    task['status'] = 'backlog' if status == 'interrupted' else 'in_review'
+                task['comments'].append({'author': '系統', 'at': stamp(), 'text': 'Claude App 的回合已結束，請驗收成果。' if status == 'completed'
+                                         else f'Claude App 的回合狀態：{status}。{error}'})
+            saved = self.store.put(task)
+            seeded = saved.get('brief') == 'seed'
+            return {'mirrored': True, 'created': created, 'task': saved, 'wantsBrief': seeded, 'briefSource': saved['description'] if seeded else ''}
+
+    def apply_brief(self, task, body):
+        """A 需求簡介／驗收條件 draft from the mod (event=brief). Only an automatic brief (seed／drafted) is replaced;
+        once the person edited the description (brief=manual) or the card never had an automatic brief, it is refused."""
+        description = clean_text(str(body.get('description') or ''), '需求簡介', 20000)
+        if task.get('brief') not in ('seed', 'drafted'):
+            return {'mirrored': False, 'reason': 'brief-manual', 'task': task}
+        if not description:
+            return {'mirrored': False, 'reason': 'brief-empty', 'task': task}
+        task['description'], task['brief'] = description, 'drafted'
+        return {'mirrored': True, 'created': False, 'brief': 'drafted', 'task': self.store.put(task)}
+
+    def first_prompt(self, tool, session_id):
+        """The earliest readable user prompt in the session's transcript window (what the chat dialog shows); '' when none."""
+        try:
+            chat = self.read_chat(session_id, tool) or {}
+        except (BoardError, OSError, ValueError, KeyError, TypeError):
+            return ''
+        for turn in chat.get('turns') or []:
+            for item in turn.get('items') or []:
+                if item.get('type') == 'userMessage':
+                    text = '\n'.join(str(c.get('text', '')) for c in item.get('content') or [] if c.get('type') == 'text').strip()
+                    if text:
+                        return text
+        return ''
+
     # ----- plan import -----
     def import_plan(self, body):
         """Expand a planned feature into backlog cards: per-item tool/model/effort, directed dependencies, creation in dependency order."""
@@ -958,6 +1082,8 @@ class Board:
             task = self.store.get(task_id)
             if task['status'] == 'done':
                 raise BoardError('請先把已完成的任務移回待辦。')
+            if task['status'] == 'in_progress':
+                raise BoardError('這張卡片正由 Claude App 的對話執行中，請等回合結束。', 409)
             self.validate_workspace(task['cwd'])
             pending = task.get('nextRun')
             previous = task['runs'][-1] if task['runs'] else None
@@ -1184,6 +1310,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(self.board.import_plan(body), 201)
         if path == '/api/claude-groups' and method == 'POST':
             return self.reply(self.board.set_claude_groups(body))
+        if path == '/api/claude-turns' and method == 'POST':
+            return self.reply(self.board.mirror_turn(body))
         if path == '/api/shutdown' and method == 'POST':
             self.reply({'ok': True})
             self.board.running = False
