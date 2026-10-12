@@ -1,5 +1,11 @@
 # 目前狀態
 
+## 2026-10-12：新電腦安裝與「建立派工卡片」工具漏傳
+
+- 新電腦安裝 VERIFIED：全域 mod 同步＋settings 登記（--check 就緒、validate 通過）、桌面 Codex.lnk、服務 47824 回應 200，Browser 窗格顯示 Codex 已連線、Claude Code 可用（CLI 2.1.294）、30 Codex／351 Claude sessions 同步；/reload-plugins 後本 session 載入 mod。NOT VERIFIED：專用 Codex App 視窗（未啟動）、新 session 自動開窗。安裝腳本「找不到 Python」為 cmd 解析誤判，不影響啟動。
+- Bug 修正：詳情視窗「建立派工卡片」未帶 `tool`，Claude 同步卡片匯入被 server 當 Codex 查找而失敗（「請先更新聊天清單」）。index.html 一行修正帶 `sourceTool`。VERIFIED：真實看板實測同卡片匯入成功、狀態可編輯、可拖曳；inline script vm 解析通過。details Node 測試需專用 Codex App，未執行。
+- 設計行為提醒：同步 session 卡片唯讀，不能拖曳或改狀態，需先建立派工卡片。
+
 ## 2026-10-11：Store 版 Claude App 的 session 路徑
 
 - Observed Fact：橫幅「Claude App session 資料未找到」。Claude App 已是 MSIX 套件 `Claude_2.31226.1.0`，`%APPDATA%\Claude` 被虛擬化到 `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude`；桌面啟動的看板服務（非 App 子程序）讀不到，Claude Code 內啟動的實例讀得到。環境變數、token、程式碼比對皆相同，重啟服務不解。

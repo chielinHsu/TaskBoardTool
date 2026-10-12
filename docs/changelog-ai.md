@@ -1,5 +1,11 @@
 # AI 工作紀錄
 
+## 2026-10-12：新電腦安裝看板；詳情「建立派工卡片」漏傳工具修正
+
+- 新電腦（HQ 筆電）安裝：setup-claude-mod.mjs 同步 6 個檔案到 ~/.claude/mods/taskboard-pane 並登記 CLAUDE_CODE_PLUGIN_DIRS（原設定備份至 work）；install-desktop-shortcut.ps1 建立桌面 Codex.lnk；start.ps1 以 Codex runtime Python 3.12 啟動 47824。使用者 /reload-plugins 後本 session 載入 taskboard-pane（4 plugins）。
+- 安裝腳本回報「找不到 Python」為誤判：cmd 下 `python` 為 9009（Store Python 3.12 登錄已失效、py -3.12 無法執行），但 start.ps1 優先用 Codex runtime Python，服務正常；Windows Store alias `python` 在 bash 也會靜默不執行腳本，改用 runtime Python 路徑。
+- 使用者回報 Claude 同步卡片在詳情按「建立派工卡片」出現「請先更新聊天清單」。根因：index.html 詳情按鈕只送 threadId、未送 tool，server 預設 codex 查不到 Claude session；既有對話頁同功能已帶 tool，Codex 卡片因預設值剛好不受影響。修正：帶 `editing.sourceTool||toolOf(editing)`。Browser 窗格實測：同一卡片匯入成功、狀態可改、可拖曳（VERIFIED）。拖曳／改狀態對同步卡片本身不可用屬設計行為。
+
 ## 2026-10-11：Store 版 Claude App 的 session 路徑修正
 
 - 使用者回報看板讀不到 Claude App sessions。逐項排除：檔案存在（51 筆）、server 環境 APPDATA 正確、同使用者同 token、程式碼與 pyc 皆現行、能力值無快取；隔離實例從 Claude shell 啟動可讀。最後以 PowerShell Target 與 GetPackageFullName 證實 Claude App 為 MSIX 套件、AppData 虛擬化，桌面啟動的服務看不到 `%APPDATA%\Claude\claude-code-sessions`。
