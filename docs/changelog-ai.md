@@ -1,5 +1,11 @@
 # AI 工作紀錄
 
+## 2026-10-12：回報渲染 Markdown 與 Mermaid 圖（網頁版與 Codex 內嵌版）
+
+- 使用者要求回報能渲染 Markdown 與 Mermaid（流程圖、循序圖、類別圖），兩種頁面都要支援，函式庫由安裝腳本下載、不進 Git。查證 11.6.0（使用者建議）有 XSS／注入公告，經使用者同意改下載 11.17.2（3,572,661 bytes，SHA-256 581ed7d7…390eb8）。
+- 新增 `setup-mermaid.mjs`（固定版本／大小／雜湊、`--check` 唯讀、不符刪除）、`.gitignore` 的 `outputs/taskboard/vendor/`；server.py `vendor_mermaid()`＋`GET /api/vendor/mermaid`（沿用 check_api，缺檔 404、雜湊不符 409、mtime 快取），API 1.8.0；index.html `taskboard-markdown` 區段（標題、巢狀清單、表格、引用、分隔線、程式碼區塊、粗體／斜體／行內程式碼，連結只顯示文字＋title）、Mermaid 懶載入／Appearance 配色／重新上色／輸出清理／失敗退回原始碼，套用到 run 回報、session 最近回報、聊天紀錄的進度與回報、狀態列表完成訊息、目前執行回報。`.claude/launch.json` 加 `taskboard-isolated`（47999、work/preview-isolated、--no-connect）。
+- 測試：`taskboard-markdown.test.mjs` 11 項（假 DOM，innerHTML 一用即失敗）、`taskboard-mermaid-setup.test.mjs` 5 項、`test_taskboard_vendor.py` 6 項；版本斷言改 1.8.0。
+- VERIFIED：實際下載與雜湊核對、Python 67、Node 新測試 16、主題 7、node --check／py_compile、Browser 窗格隔離服務實測（流程／循序／類別圖渲染、無效圖退回、明暗與即時切換、惡意標籤無效、聊天紀錄、模擬內嵌 CSP＋RPC 零違規）。NOT VERIFIED：真實 Codex App 內嵌（正式服務仍是主 checkout 舊碼）。
 ## 2026-10-12：Claude App 對話鏡像為看板卡片（mod turn 事件 → /api/claude-turns）
 
 - 使用者反映唯讀同步卡片的欄位（進行中／待審核）與建立派工卡片後的列管對不上；先提出兩個方向（欄位只反映看板流程／建卡時匯入最後回合），使用者改提由 mod 自動建卡並派工；評估排程派工會用 `claude -p` 重跑同一句需求，改為鏡像 run。使用者決定：同 session 不重複建卡（每句一筆 run）、已完成卡片重開。

@@ -1,6 +1,6 @@
 # 本專案規則
 
-- 沿用 Python 標準函式庫與原生 JS／Node API，不為局部修正加入框架。
+- 沿用 Python 標準函式庫與原生 JS／Node API，不為局部修正加入框架。例外（ADR-019）：前端渲染函式庫可由安裝腳本下載寫死版本／URL，以腳本內位元組數與 SHA-256 核對（不符即刪除並失敗），存於 gitignore 的 `outputs/taskboard/vendor/`，經受保護的 `/api/vendor/*` 以 JSON 供應、頁面懶載入；不放寬 CSP、不加 unsafe-eval、不從 CDN 直接載入、不提交函式庫本體。
 - 延續現有函式與檔案命名。文件繁體中文、UTF-8；中文 .ps1 用 UTF-8 BOM；PowerShell 5.1 讀取加 -Encoding UTF8，HTTP 探測加 -UseBasicParsing。
 - 事實與規範集中在共用来源；docs/DEVELOPMENT.md 保留為索引。
 - Appearance 背景、前景、accent、字型同步原生 token，不硬編碼綠色；保留原生 icon 呈現 attributes。

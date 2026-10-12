@@ -1,5 +1,16 @@
 # Caspar 的任務看板
 
+## 回報的 Markdown 與 Mermaid 圖
+
+看板的執行回報、聊天紀錄的回報段落與狀態列表的完成訊息會以 Markdown 顯示，```mermaid 區塊會畫成圖（流程圖、循序圖、類別圖等），配色跟看板主題。Mermaid 函式庫不在 Git 內，每個 checkout（新電腦、每個 worktree）在專案根目錄執行一次：
+
+```powershell
+node outputs/taskboard/setup-mermaid.mjs
+node outputs/taskboard/setup-mermaid.mjs --check
+```
+
+腳本從 cdn.jsdelivr.net 下載固定版本（11.17.2，約 3.4 MB）到 `outputs/taskboard/vendor/`，以腳本內寫死的位元組數與 SHA-256 核對，不符就刪除並失敗。服務已是 API 1.8.0 以上時安裝後不需重啟（重新開啟詳情即可）；沒安裝時圖會顯示原始碼與安裝提示。
+
 ## Claude Code App 內的看板窗格（mod）安裝
 
 mod 原始碼在 `claude-mod/taskboard-pane/`，但 Claude App 不會因為 clone／pull 專案就載入它。安裝方式與 usage-bar 等全域 mod 相同：複製到 `~/.claude/mods/taskboard-pane`，再把這個全域路徑登記到使用者層 `~/.claude/settings.json` 的 `env.CLAUDE_CODE_PLUGIN_DIRS`（Claude App 啟動的每個 session 都會讀取；專案層 settings 不行；不依賴專案 clone 在哪裡）。在專案根目錄執行：

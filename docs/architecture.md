@@ -1,5 +1,43 @@
 # 目前架構
 
+## 回報 Markdown 與 Mermaid 渲染（2026-10-12）
+
+修改前：run 結果、session 回報、聊天紀錄的回報段落與狀態列表的完成訊息都以 `el()`／`createTextNode` 放進 `pre-wrap` 方塊，Markdown 與 Mermaid 只顯示原始碼。
+
+```mermaid
+flowchart LR
+ Run[run.result／agentMessage／event.result] --> API[GET /api/state、/api/chat]
+ API --> UI[index.html renderTaskSessions／openChat／eventNode]
+ UI --> Text[.result-text／.comment／pre 純文字]
+```
+
+修改後：同一批位置改呼叫 `mdBox`／`mdRender`；轉換器只建立元素與文字節點。已關閉的 ```mermaid 區塊先顯示原始碼，再經 `api()` 懶載入函式庫（網頁版 fetch＋X-Board-Token、Codex 內嵌版 postMessage→app-injector RPC，同一路徑）；使用者訊息維持純文字。
+
+```mermaid
+sequenceDiagram
+ participant UI as index.html mdBlocks／mermaidDraw
+ participant Bridge as api()（fetch 或 RPC 橋接）
+ participant API as server.py vendor_mermaid
+ participant FS as vendor/mermaid.min.js＋mermaid.json
+ UI->>UI: 回報文字 → 元素＋文字節點（不經 innerHTML）
+ UI->>Bridge: 第一個已關閉的 mermaid 區塊 → GET /api/vendor/mermaid
+ Bridge->>API: check_host／check_api（token、Origin）
+ API->>FS: 讀檔，SHA-256 對安裝紀錄（mtime／大小快取）
+ API-->>UI: {name, version, sha256, source}；缺檔 404、不符 409
+ UI->>UI: script.textContent 注入 → initialize(strict, base, Appearance token 轉 hex)
+ UI->>UI: render → template 惰性解析 → mermaidClean → 插入 SVG；失敗退回原始碼＋原因
+ Note over UI: 根元素 style／data-host-theme 或系統明暗改變 → 重新上色
+```
+
+安裝流程：函式庫不進 Git，由腳本下載固定版本。
+
+```mermaid
+flowchart LR
+ Setup[setup-mermaid.mjs] -->|fetch 固定 URL| CDN[cdn.jsdelivr.net mermaid@11.17.2]
+ Setup -->|位元組數＋SHA-256 相符| Vendor[vendor/mermaid.min.js＋mermaid.json]
+ Setup -->|不符| Fail[刪除下載與舊檔，結束碼 1]
+```
+
 ## Claude App 對話鏡像（2026-10-12）
 
 修改前：Claude App 的 session 只經 claude_sessions 索引投影成唯讀卡片，欄位等於訊號狀態；要操作必須「建立派工卡片」，固定進列管。

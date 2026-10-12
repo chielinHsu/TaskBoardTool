@@ -22,7 +22,7 @@ async function inFrame(expression){
  assert.equal(out.exceptionDetails,undefined);return out.result.value;
 }
 try{
- const before=await getState();assert.equal(before.version,'1.7.0');assert.ok(before.chatSync.updatedAt);assert.equal(before.chatSync.error,'');
+ const before=await getState();assert.equal(before.version,'1.8.0');assert.ok(before.chatSync.updatedAt);assert.equal(before.chatSync.error,'');
  const modelResponse=await fetch(config.boardUrl+'/api/models',{headers:{'X-Board-Token':token}});
  assert.equal(modelResponse.ok,true);const catalog=await modelResponse.json();assert.ok(catalog.models.length>0);
  assert.ok(catalog.models.every(model=>typeof model.model==='string'&&typeof model.displayName==='string'));

@@ -1,39 +1,37 @@
-# 交接（2026-10-12）：Claude App 對話鏡像為看板卡片（mod turn 事件 → /api/claude-turns）
+# 交接（2026-10-12）：回報渲染 Markdown 與 Mermaid 圖（網頁版與 Codex 內嵌版）
 
 ## 正在做
-使用者指出同步的唯讀 session 卡片會出現在「進行中／待審核」卻不能拖，按「建立派工卡片」後又退回列管，狀態對不上。決定改為：Claude App 的 session 送出需求時由 mod 自動建卡並直接進「進行中」，回合結束進「待審核」；同 session 後續每句都是同一張卡的 run，已完成的卡收到新需求重開。本輪已實作與驗證，未 stage／commit。
-
-續（同日 15:40 起）：使用者看了鏡像卡的聊天紀錄後提出三點：回合要摺疊、你／Claude 訊息配色區分、需求簡介與驗收條件未填時依第一句擬一份且後續對話不得改動。已實作、測試，正式服務重啟為 1.7.0，仍未 stage／commit。
+使用者要求看板回報能渲染 Markdown 與 Mermaid（流程圖、循序圖、類別圖），網頁版（47824／Browser 窗格）與 Codex App 內嵌版都要支援，函式庫由安裝腳本下載、不進 Git。本輪已實作與驗證，在 worktree `claude/distracted-colden-4e156a`，未 stage／commit。
 
 ## 本輪已完成
-- server.py：`Board.mirror_turn` 與 `POST /api/claude-turns`（event=start／complete；sessionId、turnId、text、answer、reason、aborted、cwd、model）。首句建卡（priority high、tool claude、sourceId／sourceTool、cwd 存在才填、project 取群組或資料夾名）、run kind=`mirror`；start 重複 turnId 忽略、前一筆 running 未收到結束改 `unknown`；complete 寫 result／error，`aborted`→interrupted→列管、`error`／`refusal`→failed→待審核、其餘 completed→待審核；有 nextRun 則回待辦。看板自己派工中的 Claude run（active run 的 threadId 未綁定或相同）回 `board-run` 不鏡像；孤立 complete 或空需求回 `no-card`。
-- 守衛：`update` 拒絕把鏡像執行中的卡片改狀態（其他欄位可存；同狀態 PATCH 不再撞「請用開始執行」）；`start` 拒絕 in_progress 卡片；followup 本來就拒絕。排程只看 todo。API_VERSION 1.6.0。
-- index.html：`mirroring(t)`（非唯讀、in_progress、非 activeId）→ 不可拖、徽章「Claude App 對話執行中」、詳情停用狀態／開始執行／後續需求；run 標籤 `mirror`＝「Claude App 對話」。
-- mod register.tsx：`turn.start`／`turn.complete`（略過 subagent）呼叫 `mirror()` POST；session.id／cwd／model 讀取失敗不阻擋回合。taskboard.test.ts 新增鏡像測試（測試底層 `on('session.id', () => ({ value }))`）。已 `node outputs/taskboard/setup-claude-mod.mjs` 同步全域副本（--check 就緒，「缺少 Python」為 cmd 誤判）。
-- 測試：tests/test_taskboard_mirror.py 7 項；版本斷言改 1.6.0（test_taskboard_plans、test_taskboard_tools、taskboard-sessions-app）。
-- 文件：current-status、changelog-ai、ADR-017、architecture（前後 Mermaid）、AI_CONTEXT（目錄表、不變條件、`py -3` 註記）。
-- VERIFIED：`py -3 -m py_compile`；Python 57 測試通過；`claude plugin validate`／`test` 7 項通過；隔離服務（`--port 47999 --data-dir work/mirror-verify --no-connect`）用 curl 送 start → Browser 窗格看到卡片在進行中、徽章、詳情狀態／開始執行／後續需求停用、`draggable=false`；送 complete 後卡片移到待審核、run 結果與系統留言正確。驗證後已 `/api/shutdown`，正式 47824 服務未動（仍是舊碼）。
-- 真實 session 驗證（2026-10-12 15:19–15:26，本 Claude App session）：VERIFIED 真實 session 的 `turn.start`／`turn.complete` 會送 `POST /api/claude-turns`（舊碼先回 404，重啟後 200）；`$.session.id()` 等於 transcript 的 session id（卡片 sourceId＝`75317312-…`，而桌面側 `list_sessions` 的 id 是 `local_c2bfbe8c-…`）；首句建卡進「進行中」（priority high、tool claude、project 取資料夾名）並取代同 session 的唯讀追蹤卡；run 為 `mirror`／執行中、model 存 `claude-fable-5-1`；卡片 `draggable=false`、徽章「Claude App 對話執行中」；詳情狀態選單、開始執行、後續需求區停用，停止執行／建立派工卡片隱藏。前一回合的孤立 `complete` 回 200（no-card）。正式 47824 服務已在 15:21 以 stop.ps1／start.ps1 重啟為 1.6.0，卡片保留。
-- NOT VERIFIED：真實 `turn.complete` 後卡片移到「待審核」（隔離服務已驗證，正式服務要在回合結束後再看）；`claude -p` 派工子程序是否也載入 mod（伺服器已靠 active run 排除）；Codex App DOM 測試（details／drag／projects）因 `python` alias 與專用 renderer 未跑。
-- 附帶觀察：server.log 從未出現 `POST /api/claude-groups`，`claudeGroups` 為空，所以鏡像卡 project 取資料夾名而非側欄群組（mod 的 `$.mcp.call('ccd_session_mgmt','list_sessions')` 可能靜默失敗，屬先前功能）；stop.ps1 的 Invoke-WebRequest 缺 `-UseBasicParsing`；start.ps1 在 bash 內因子程序繼承管線不會自行結束（改用 `Start-Process powershell … start.ps1` 分離啟動即可）。
-- 續輪實作：index.html 聊天紀錄每回合 `details.chat-turn`（只展開最新；summary＝回合 N · 狀態 · 首句摘要 · 時間，回合 ID 在 title）＋ `msg-user`（accent-light 底、accent 左框）／`msg-progress`（灰、虛線）／`msg-agent`（hover 底），詳情簡介在 brief seed／drafted 時附說明。server.py：`brief` seed→drafted→manual、`event=brief`／`apply_brief`、`first_prompt`（transcript 最早一句）、`update` 改 description→manual、舊鏡像卡（無 brief 鍵且簡介＝首筆 mirror run 需求）在下一個事件重播種為 seed、Store 啟動復原跳過最後 run 為 mirror 的進行中卡片、API 1.7.0。register.tsx：`draftBrief`（`$.model.complete` haiku／low／800 tokens／60 s，固定繁中格式，失敗則保留第一句）。tests：test_taskboard_mirror 11 項、mod 鏡像測試含 brief（`on('model.complete')` 模擬）、版本斷言 1.7.0。文件：ADR-018、architecture 擬稿序列圖、current-status、changelog、AI_CONTEXT。全域 mod 副本已以 setup-claude-mod.mjs 同步。
-- 續輪 VERIFIED：Python 61 測試、mod validate／test 7 項、index.html 內嵌 script 解析、Browser 窗格實測聊天紀錄三回合摺疊與三種配色、真實回合結束→待審核（卡 118e063ee674 run 1 completed）、正式服務 1.7.0。實際失敗：15:48 重啟時舊復原碼把鏡像中的 run 2 標為「已中止」並把卡片推到待審核（已修；本回合結束訊號到達後 run 2 會以 turnId 對上改為 completed，並因簡介仍等於首筆需求而重播種 brief=seed）。NOT VERIFIED：真實 `$.model.complete` 擬稿與 brief 回寫（需下一句 start 觸發）。
-- 實際失敗：bash `python`／`py -3.12` 皆為失效的 Store alias，改用 `py -3`（3.9）；Python `write_text` 把 LF 檔寫成 CRLF，已逐檔還原（tsx／ts 依 autocrlf 保持 CRLF）。
+- 版本：使用者原建議 11.6.0；查 GitHub 公告 11.6.0～11.16.0 有 XSS（CVE-2025-54881／54880）、HTML／CSS 注入、DoS，經使用者同意改 11.17.2（2026-08-25，3,572,661 bytes，SHA-256 581ed7d7…390eb8，jsDelivr data API 取得後實際下載核對相符）。
+- `outputs/taskboard/setup-mermaid.mjs`：寫死版本／URL／大小／雜湊；`--check` 唯讀；不符刪除下載與舊檔、結束碼 1；寫 `vendor/mermaid.min.js`＋`vendor/mermaid.json`（安裝紀錄）。`install`／`inspect` 可注入 fetch 測試。`.gitignore` 加 `outputs/taskboard/vendor/`（CRLF 與原檔一致）。
+- server.py：`VENDOR`、`vendor_mermaid()`（安裝紀錄 SHA-256 再核對、mtime／大小快取；缺檔 404、不符 409，訊息含安裝指令）、`GET /api/vendor/mermaid` 在 check_api 之後；CSP 未改；API 1.8.0。
+- index.html：`/* taskboard-markdown:start/end */` 區段——只建元素與文字節點（標題、巢狀清單、表格、引用、hr、程式碼區塊、粗體／斜體／行內程式碼、連結只顯示文字＋title；>200k 字或巢狀 >8 層退純文字）。已關閉的 ```mermaid 區塊先顯示原始碼，再 `api('/api/vendor/mermaid')` 懶載入、script.textContent 注入；`securityLevel:'strict'`、`suppressErrorRendering`、theme base，themeVariables 由 CSS token 經 getComputedStyle 轉 hex（半透明色合成到 paper）；SVG 經 template 惰性解析＋`mermaidClean` 移除 script／iframe／img／animate 等、on* 屬性、非 # 的 href／src、javascript: 值；SVG 以主題＋原始碼快取（60 筆）；根元素 style／data-host-theme 或系統明暗變更時重新上色；失敗退回原始碼＋原因、失敗 30 秒內不重抓。套用：run 回報、session 最近回報、聊天紀錄進度與回報（使用者訊息純文字）、狀態列表完成訊息、`#task-result`（mdRender 同文字跳過）。
+- `.claude/launch.json` 加 `taskboard-isolated`（py -3、47999、work/preview-isolated、--no-connect），驗證用不碰正式服務。
+- 測試：`tests/taskboard-markdown.test.mjs` 11 項（假 DOM，innerHTML 被呼叫即失敗；跳脫、`<script>`／`<img onerror>`、mermaid 內嵌 HTML、無函式庫退回、未關閉 fence、清理器、配色）、`tests/taskboard-mermaid-setup.test.mjs` 5 項（雜湊不符／HTTP 失敗／安裝紀錄）、`tests/test_taskboard_vendor.py` 6 項（token／Origin、缺檔、不符、快取、CSP 無 unsafe-eval）；三個版本斷言改 1.8.0。
+- 文件：architecture（前後 Mermaid 圖）、ADR-019、changelog、current-status、project-rules（不加框架的例外條件）、AI_CONTEXT（技術棧、目錄、測試指令、不變條件、Context Routing、API 1.8.0）、README 安裝段落。
+
+## 驗證
+- VERIFIED：實際下載＋核對＋`--check`；靜態掃描 bundle 只有 lodash 的 `self||Function("return this")()` 短路分支。`py -3 -m py_compile`、`node --check`（app-panel、app-injector、setup-mermaid）、index.html 兩段 inline script 解析；Python 67 測試；Node Markdown 11＋安裝 5＋主題 7。
+- VERIFIED（Browser 窗格、隔離服務 47999）：以 `/api/claude-turns` 建一張鏡像卡，詳情中流程圖／循序圖／類別圖渲染、無效圖退回原始碼並附解析錯誤；暗色→亮色即時重新上色；惡意標籤（img onerror、javascript: 連結、iframe srcdoc、svg onload、init 指令改 securityLevel）`__xss`=0、無主動元素；聊天紀錄（暫時替換頁面 api 回傳假對話）回報與進度渲染、使用者訊息純文字；無 console 錯誤。
+- PARTIALLY VERIFIED（內嵌）：同一 Chromium 以 srcdoc 套用 injector 相同 CSP meta、`__CASPAR_EMBED_RPC__` 與相同路徑白名單的 postMessage RPC：經 RPC 取得 `/api/vendor/mermaid`、securitypolicyviolation 0 筆、Appearance 主題訊息（暗色＋紫 accent）重新上色。
+- NOT VERIFIED：真實 Codex App 專用視窗內顯示與 `node tests/taskboard-app.test.mjs`——正式 47824 服務與 9232 App 跑主 checkout 舊碼，依規定未重啟；worktree 沒有 `.data/app-integration.json`。`Page.setDocumentContent` 與 srcdoc 的差異、3.5 MB 經 CDP evaluate＋postMessage 的耗時未實測。Claude App mod 窗格是原生元件，不渲染 Markdown。
+- 實際失敗：Git Bash heredoc／sed 處理中文與反引號出錯（改用 Write；sed 曾把 .gitignore 換行弄成混合，已以 printf 重寫為 CRLF）；Python 3.9 讀超長中文行的腳本誤報 Non-UTF-8，加 coding 宣告後正常；測試初版兩處斷言錯（含括號的連結本就不成立、半透明合成值 4a），已修正測試。
 
 ## 下一步
-1. 下一句送出後確認卡 118e063ee674：回進行中、新增 run、`brief` 由 seed 變 drafted（詳情簡介出現「需求簡介／驗收條件」與自動擬定說明、標題不變）；若沒變，看 server.log 該 start 之後是否多一筆 `/api/claude-turns`（沒有＝`$.model.complete` 失敗或空白，有但 brief 未變＝回應 reason）。
-2. 查 `claude-groups` 為何從未送達（mod `syncGroups` 的 `$.mcp.call` 結果），決定鏡像卡 project 要不要補群組名。
-3. 每句都建卡是否太吵，實測後再決定是否加開關（設定或 /taskboard 切換）。
-4. stop.ps1 補 `-UseBasicParsing`（專案規則）。
+1. 使用者授權後 commit；合併到 main 後在**主 checkout** 執行 `node outputs/taskboard/setup-mermaid.mjs`（vendor/ 每個 checkout 各自一份），經同意重啟正式服務為 1.8.0。
+2. 重啟後用專用 Codex App 開一張有 Mermaid 回報的卡片確認圖顯示，並跑 `node tests/taskboard-app.test.mjs`。
+3. 觀察首次載入經 RPC 的延遲（20 秒 RPC 逾時、helper 18 秒 fetch 逾時）。
 
 ## 相關檔案
-outputs/taskboard/server.py（mirror_turn、update／start 守衛、dispatch）、index.html（mirroring、card、refreshDetail）、claude-mod/taskboard-pane/hooks/register.tsx（mirror、turn hooks）、hooks/taskboard.test.ts、tests/test_taskboard_mirror.py。
+outputs/taskboard/setup-mermaid.mjs、server.py（vendor_mermaid、dispatch）、index.html（taskboard-markdown 區段、套用處、.md CSS）、.gitignore、.claude/launch.json、tests/taskboard-markdown.test.mjs、tests/taskboard-mermaid-setup.test.mjs、tests/test_taskboard_vendor.py、docs 四檔、AI_CONTEXT.md、project-rules.md、README.md。
 
 ## 不要動
-真實 .data／profile／認證；正式 47824 服務除非使用者要求重啟；~/.claude/settings.json 其他鍵；不直接編輯 SQLite。stage 明列路徑，禁止 git add .。
+真實 .data／profile／認證；正式 47824 服務與專用 App 除非使用者要求；不提交 vendor/；不放寬 CSP。stage 明列路徑，禁止 git add .／-A。
 
 ## 未提交變更
-本輪修改：server.py、index.html、register.tsx、taskboard.test.ts、三個版本測試、新增 test_taskboard_mirror.py、AI_CONTEXT.md、docs 四檔、本檔；續輪再改同一批檔案並加 docs/decisions.md（ADR-018）；全部未 stage。work/mirror-verify 為驗證用隔離資料，不進 Git。
+上列檔案全部未 stage；worktree 的 `outputs/taskboard/vendor/`（已 ignore）與 `work/preview-isolated`（隔離資料，不進 Git）。
 
 ## 假設與未驗證事項
-App 內 session 的 turn 事件會送到 mod 且 session.id 與 transcript 一致已由真實 session 證實；仍假設 `claude -p` 派工子程序的事件會被 active run 守衛擋掉。真實模型派工與核准往返仍 NOT VERIFIED。
+假設真實 Codex 內嵌 frame（setDocumentContent＋host setBypassCSP）與 srcdoc＋相同 CSP meta 的行為一致；假設 Mermaid 之後版本升級時同步改腳本四個固定值。

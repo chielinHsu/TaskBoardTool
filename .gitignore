@@ -4,3 +4,4 @@ work/
 .claude/worktrees/
 .ai/bench/
 .ai/router-state/
+outputs/taskboard/vendor/

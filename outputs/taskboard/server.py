@@ -4,6 +4,7 @@ import argparse
 import atexit
 import base64
 from html import escape as html_escape
+import hashlib
 import hmac
 import json
 import logging
@@ -26,6 +27,35 @@ from claude_adapter import ClaudeAdapter, resolve_command
 from folder_picker import FolderPicker
 
 ROOT = Path(__file__).resolve().parent
+VENDOR = ROOT / 'vendor'
+MERMAID_INSTALL = 'node outputs/taskboard/setup-mermaid.mjs'
+_vendor_cache: dict = {}
+
+
+def vendor_mermaid() -> dict:
+    """setup-mermaid.mjs 下載的 Mermaid（vendor/，不進 Git）：以安裝紀錄的 SHA-256 核對後回傳原始碼，
+    依檔案 mtime／大小快取。看板以 inline script 注入，網頁版與 Codex App 內嵌版同一路徑，不放寬 CSP。"""
+    script, manifest = VENDOR / 'mermaid.min.js', VENDOR / 'mermaid.json'
+    try:
+        info = script.stat()
+        record = json.loads(manifest.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        raise BoardError(f'尚未安裝 Mermaid 圖表函式庫，請在專案根目錄執行 {MERMAID_INSTALL}。', 404)
+    expected = str(record.get('sha256') or '').lower() if isinstance(record, dict) else ''
+    key = (str(script), info.st_mtime_ns, info.st_size, expected)
+    cached = _vendor_cache.get('mermaid')
+    if cached and cached[0] == key:
+        return cached[1]
+    data = script.read_bytes()
+    try:
+        if not expected or hashlib.sha256(data).hexdigest() != expected:
+            raise ValueError
+        source = data.decode('utf-8')
+    except ValueError:
+        raise BoardError(f'Mermaid 檔案與安裝紀錄的雜湊不符，請重新執行 {MERMAID_INSTALL}。', 409)
+    value = {'name': 'mermaid', 'version': str(record.get('version') or ''), 'sha256': expected, 'source': source}
+    _vendor_cache['mermaid'] = (key, value)
+    return value
 
 
 def claude_account_name() -> str:
@@ -74,7 +104,7 @@ STATUSES = ('backlog', 'todo', 'in_progress', 'in_review', 'done')
 STATUS_LABELS = {'backlog': '列管', 'todo': '待辦', 'in_progress': '進行中', 'in_review': '待審核', 'done': '已完成'}
 PRIORITIES = ('low', 'medium', 'high', 'urgent')
 LOG = logging.getLogger('taskboard')
-API_VERSION = '1.7.0'
+API_VERSION = '1.8.0'
 EXPORT_SCHEMA = 5
 EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
 # The five Claude roles of MODEL_ROUTING.md as (model alias, effort); Codex keeps its own default model.
@@ -1281,6 +1311,8 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as exc:
                     claude = {'chats': list(self.board.claude_chats.values()), 'error': str(exc)}
                 return self.reply({**result, 'claudeChats': claude['chats'], 'claudeError': claude.get('error', '')})
+            if path == '/api/vendor/mermaid':
+                return self.reply(vendor_mermaid())
             if path == '/api/models':
                 return self.reply({'tool': tool, 'models': self.board.models(tool)})
             if path == '/api/export':

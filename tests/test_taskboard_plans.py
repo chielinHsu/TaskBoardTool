@@ -207,7 +207,7 @@ class PlanTests(unittest.TestCase):
         loaded = self.get(task['id'])
         self.assertEqual((loaded['effort'], loaded['plan'], loaded['dependsOn'], loaded['blocks']), ('', None, [], []))
         self.assertEqual(server.EXPORT_SCHEMA, 5)
-        self.assertEqual(self.board.state()['version'], '1.7.0')
+        self.assertEqual(self.board.state()['version'], '1.8.0')
 
 
 if __name__ == '__main__':
