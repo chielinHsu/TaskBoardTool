@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -35,6 +36,13 @@ class Process:
 
 class FolderTests(unittest.TestCase):
     def setUp(self):
+        # Only this module sees Windows; pathlib and the host OS stay unchanged.
+        platform = patch('folder_picker.os', SimpleNamespace(name='nt'))
+        platform.start()
+        self.addCleanup(platform.stop)
+        flags = patch('folder_picker.subprocess.CREATE_NO_WINDOW', 0, create=True)
+        flags.start()
+        self.addCleanup(flags.stop)
         self.temp = tempfile.TemporaryDirectory(dir=ROOT / 'work', prefix='folder-中文 空白-')
         self.path = self.temp.name
         self.process = Process(json.dumps({'path': self.path, 'cancelled': False}, ensure_ascii=False).encode())
@@ -58,6 +66,13 @@ class FolderTests(unittest.TestCase):
         self.assertEqual((selected['status'], selected['path']), ('selected', self.path))
         self.assertTrue(self.process.collected)
         self.assertIsNone(self.picker.timer)
+
+    def test_non_windows_platform_is_rejected_without_spawning(self):
+        with patch('folder_picker.os', SimpleNamespace(name='posix')):
+            with self.assertRaises(server.BoardError) as caught:
+                self.picker.start(self.path)
+        self.assertEqual(caught.exception.status, 503)
+        self.mock_spawn.assert_not_called()
 
     def test_user_cancel_expiry_and_shutdown_reap_process(self):
         self.process.result = b'{"cancelled":true}'
