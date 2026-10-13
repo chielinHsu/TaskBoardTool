@@ -1,7 +1,7 @@
 # 交接（2026-10-12）：回報渲染 Markdown 與 Mermaid 圖（網頁版與 Codex 內嵌版）
 
 ## 正在做
-使用者要求看板回報能渲染 Markdown 與 Mermaid（流程圖、循序圖、類別圖），網頁版（47824／Browser 窗格）與 Codex App 內嵌版都要支援，函式庫由安裝腳本下載、不進 Git。本輪已實作與驗證，在 worktree `claude/distracted-colden-4e156a`，未 stage／commit。
+使用者要求看板回報能渲染 Markdown 與 Mermaid（流程圖、循序圖、類別圖），網頁版（47824／Browser 窗格）與 Codex App 內嵌版都要支援，函式庫由安裝腳本下載、不進 Git。已實作、驗證，commit 1921dac 已 push 並快轉合併 main（origin/main 同步），正式服務已是 1.8.0。
 
 ## 本輪已完成
 - 版本：使用者原建議 11.6.0；查 GitHub 公告 11.6.0～11.16.0 有 XSS（CVE-2025-54881／54880）、HTML／CSS 注入、DoS，經使用者同意改 11.17.2（2026-08-25，3,572,661 bytes，SHA-256 581ed7d7…390eb8，jsDelivr data API 取得後實際下載核對相符）。
@@ -16,13 +16,15 @@
 - VERIFIED：實際下載＋核對＋`--check`；靜態掃描 bundle 只有 lodash 的 `self||Function("return this")()` 短路分支。`py -3 -m py_compile`、`node --check`（app-panel、app-injector、setup-mermaid）、index.html 兩段 inline script 解析；Python 67 測試；Node Markdown 11＋安裝 5＋主題 7。
 - VERIFIED（Browser 窗格、隔離服務 47999）：以 `/api/claude-turns` 建一張鏡像卡，詳情中流程圖／循序圖／類別圖渲染、無效圖退回原始碼並附解析錯誤；暗色→亮色即時重新上色；惡意標籤（img onerror、javascript: 連結、iframe srcdoc、svg onload、init 指令改 securityLevel）`__xss`=0、無主動元素；聊天紀錄（暫時替換頁面 api 回傳假對話）回報與進度渲染、使用者訊息純文字；無 console 錯誤。
 - PARTIALLY VERIFIED（內嵌）：同一 Chromium 以 srcdoc 套用 injector 相同 CSP meta、`__CASPAR_EMBED_RPC__` 與相同路徑白名單的 postMessage RPC：經 RPC 取得 `/api/vendor/mermaid`、securitypolicyviolation 0 筆、Appearance 主題訊息（暗色＋紫 accent）重新上色。
-- NOT VERIFIED：真實 Codex App 專用視窗內顯示與 `node tests/taskboard-app.test.mjs`——正式 47824 服務與 9232 App 跑主 checkout 舊碼，依規定未重啟；worktree 沒有 `.data/app-integration.json`。`Page.setDocumentContent` 與 srcdoc 的差異、3.5 MB 經 CDP evaluate＋postMessage 的耗時未實測。Claude App mod 窗格是原生元件，不渲染 Markdown。
+- VERIFIED（合併後、正式服務 1.8.0）：主 checkout 執行 `node tests/taskboard-app.test.mjs` 4 項 PASS；真實 Codex 內嵌 frame 以暫時離屏 DOM 畫流程圖＋循序圖皆 rendered，線框色＝App accent（rgb(166,125,242)），CSP 違規 0，未寫卡片（探測腳本在 scratchpad，未進 Git）。
+- NOT VERIFIED：3.7 MB 經 CDP evaluate＋postMessage 的耗時；Claude App mod 窗格是原生元件，不渲染 Markdown。
+- 實際失敗（合併後）：我給的 stop／start 指令是相對路徑，使用者終端機在 worktree，服務一度從 worktree 以空資料庫（worktree `outputs/taskboard/.data`，gitignore、仍留著）啟動，已用絕對路徑換回主 checkout；App 開著時服務重啟，frame 重新載入新頁面後 RPC 無回應（`api()` 10 秒以上無回覆、畫面連線中斷），使用者重開 App 與服務後恢復，原因未查明。
 - 實際失敗：Git Bash heredoc／sed 處理中文與反引號出錯（改用 Write；sed 曾把 .gitignore 換行弄成混合，已以 printf 重寫為 CRLF）；Python 3.9 讀超長中文行的腳本誤報 Non-UTF-8，加 coding 宣告後正常；測試初版兩處斷言錯（含括號的連結本就不成立、半透明合成值 4a），已修正測試。
 
 ## 下一步
-1. 使用者授權後 commit；合併到 main 後在**主 checkout** 執行 `node outputs/taskboard/setup-mermaid.mjs`（vendor/ 每個 checkout 各自一份），經同意重啟正式服務為 1.8.0。
-2. 重啟後用專用 Codex App 開一張有 Mermaid 回報的卡片確認圖顯示，並跑 `node tests/taskboard-app.test.mjs`。
-3. 觀察首次載入經 RPC 的延遲（20 秒 RPC 逾時、helper 18 秒 fetch 逾時）。
+1. 查 App 開著時服務重啟後 frame RPC 無回應的根因（app-injector bindingCalled／loadFrame 流程、是否與 3.7 MB 回應有關），可用 scratchpad 探測方式在 frame 主世界呼叫 `api()`。
+2. 給使用者的指令一律用絕對路徑（終端機可能在 worktree）。
+3. 確認後可刪 worktree 的 `outputs/taskboard/.data`（誤啟動留下的空資料庫）。
 
 ## 相關檔案
 outputs/taskboard/setup-mermaid.mjs、server.py（vendor_mermaid、dispatch）、index.html（taskboard-markdown 區段、套用處、.md CSS）、.gitignore、.claude/launch.json、tests/taskboard-markdown.test.mjs、tests/taskboard-mermaid-setup.test.mjs、tests/test_taskboard_vendor.py、docs 四檔、AI_CONTEXT.md、project-rules.md、README.md。
@@ -31,7 +33,7 @@ outputs/taskboard/setup-mermaid.mjs、server.py（vendor_mermaid、dispatch）�
 真實 .data／profile／認證；正式 47824 服務與專用 App 除非使用者要求；不提交 vendor/；不放寬 CSP。stage 明列路徑，禁止 git add .／-A。
 
 ## 未提交變更
-上列檔案全部未 stage；worktree 的 `outputs/taskboard/vendor/`（已 ignore）與 `work/preview-isolated`（隔離資料，不進 Git）。
+無（本檔與狀態文件的驗證更新隨後提交）。ignore 的本機產物：worktree 與主 checkout 的 `outputs/taskboard/vendor/`、worktree 的 `work/preview-isolated` 與 `outputs/taskboard/.data`。
 
 ## 假設與未驗證事項
-假設真實 Codex 內嵌 frame（setDocumentContent＋host setBypassCSP）與 srcdoc＋相同 CSP meta 的行為一致；假設 Mermaid 之後版本升級時同步改腳本四個固定值。
+真實內嵌已實測可渲染；假設 Mermaid 之後版本升級時同步改腳本四個固定值。

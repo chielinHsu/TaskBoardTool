@@ -4,7 +4,8 @@
 
 - 看板的執行回報、session 最近回報、聊天紀錄（進度與回報；你的訊息維持純文字）、狀態列表完成訊息改以 Markdown 顯示；```mermaid 區塊畫成圖，配色跟 Appearance token 與明暗主題，切換時即時重新上色；圖無法解析或函式庫未安裝時顯示原始碼與原因。
 - Mermaid 11.17.2 由 `node outputs/taskboard/setup-mermaid.mjs` 下載到 `outputs/taskboard/vendor/`（不進 Git，SHA-256 核對），頁面經 `GET /api/vendor/mermaid` 懶載入；網頁版與 Codex 內嵌版同一路徑，CSP 未放寬。API 1.8.0。每個 checkout 要各執行一次安裝腳本。
-- VERIFIED：下載／核對／`--check`；Python 67、Node Markdown 11＋安裝 5＋主題 7；Browser 窗格隔離服務（47999）實測三種圖、退回、明暗、惡意標籤（`__xss` 為 0）、聊天紀錄；在同一 Chromium 以內嵌相同 CSP meta＋postMessage RPC 模擬，零 CSP 違規、主題訊息重新上色。NOT VERIFIED：真實 Codex App 專用視窗（正式 47824 服務與 App 跑主 checkout 舊碼，需合併、在主 checkout 執行安裝腳本並重啟服務後再跑 `node tests/taskboard-app.test.mjs`）；mod 窗格不渲染（原生元件）。
+- VERIFIED：下載／核對／`--check`；Python 67、Node Markdown 11＋安裝 5＋主題 7；Browser 窗格隔離服務（47999）實測三種圖、退回、明暗、惡意標籤（`__xss` 為 0）、聊天紀錄；在同一 Chromium 以內嵌相同 CSP meta＋postMessage RPC 模擬，零 CSP 違規、主題訊息重新上色。NOT VERIFIED：mod 窗格不渲染（原生元件）。
+- 同日續：使用者授權後 commit 1921dac、push 分支並快轉合併 main、push origin/main；主 checkout 的 vendor/ 由 worktree 已核對的檔案複製（`--check` 相符）；正式服務重啟為 1.8.0。VERIFIED：`node tests/taskboard-app.test.mjs` 4 項 PASS；在真實 Codex 內嵌 frame 以暫時離屏 DOM 畫流程圖與循序圖皆 rendered，線框色等於 App accent，securitypolicyviolation 0 筆，未寫卡片。實際失敗：(1) 給使用者的 stop／start 指令用相對路徑，使用者終端機在 worktree，服務一度從 worktree 以空資料庫啟動（真實資料未受影響，已以絕對路徑換回；worktree 的 .data 留著、gitignore）；(2) App 開著時服務重啟，frame 已重新載入新頁面但之後 RPC 無回應、一直顯示連線中斷，使用者重開 App 與服務後恢復；原因未查明（helper 重連或首次 3.7 MB 回應皆有可能，無證據區分）。
 ## 2026-10-12：Claude App 對話自動鏡像為看板卡片
 
 - 使用者指出唯讀同步卡片出現在「待審核」卻不能拖，按「建立派工卡片」後又退回列管，狀態對不上。改為 taskboard-pane mod 在 `turn.start`／`turn.complete` 把 session 的回合送到 `POST /api/claude-turns`：session 首句自動建卡並直接進「進行中」（priority 高、tool claude、綁定 session、cwd 存在才填），回合結束進「待審核」並把回覆存成 run 結果；同 session 後續每句都是同一張卡的 `mirror` run，已完成的卡收到新需求重開。看板不派工、不延續、不停止這些 session；看板自己派的 Claude run 不鏡像。
