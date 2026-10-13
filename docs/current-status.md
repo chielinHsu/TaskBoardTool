@@ -1,5 +1,10 @@
 # 目前狀態
 
+## 2026-10-13：操作手冊 docs/user-guide.md 與 45 秒簡報影片
+
+- 新增分章節操作手冊 `docs/user-guide.md`，根目錄 README 與看板 README 開頭加連結；`docs/images/` 放打碼標註截圖與影片畫面。影片原始碼與成品在 `work/promo-video/`（已納入 Git，中間產物排除），重新產生方式見該資料夾 README。
+- VERIFIED：MP4 在 Chrome 解碼與關鍵影格人工檢視。NOT VERIFIED：其他播放器相容性；手冊內容依 index.html 文案、啟動腳本與 AI_CONTEXT 撰寫，未逐項在真實看板重演每個步驟。
+
 ## 2026-10-13：Claude App 倒回對話後沿用原鏡像卡
 
 - 原因：App 倒回訊息改用新的 CLI session id（舊 id 在 `priorCliSessionIds`），看板以 session id 找卡而多建一張同標題卡。claude_sessions 回傳 `priorIds`，鏡像回合與 Claude 同步依此把原卡的 sourceId 改到新 id，舊 id 的 runs 併入新 session（`priorSessionIds` 保留舊 id），詳情不再重複列同一段 session；新 id 已有自己的卡則不動。

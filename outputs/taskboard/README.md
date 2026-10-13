@@ -1,5 +1,7 @@
 # Caspar 的任務看板
 
+> 依章節整理的操作手冊在 [docs/user-guide.md](../../docs/user-guide.md)（安裝、啟動、卡片操作、Session 連動、對話分類、心智圖、計畫匯入、排錯，開頭附 45 秒展示影片）。本檔保留安裝與整合的背景說明與歷次更新紀錄。
+
 ## 回報的 Markdown 與 Mermaid 圖
 
 看板的執行回報、聊天紀錄的回報段落與狀態列表的完成訊息會以 Markdown 顯示，```mermaid 區塊會畫成圖（流程圖、循序圖、類別圖等），配色跟看板主題。Mermaid 函式庫不在 Git 內，每個 checkout（新電腦、每個 worktree）在專案根目錄執行一次：

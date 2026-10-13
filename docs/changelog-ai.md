@@ -1,5 +1,11 @@
 # AI 工作紀錄
 
+## 2026-10-13：操作手冊與動態簡報影片
+
+- 使用者要求把看板使用方法寫成分章節的操作手冊，並製作 15 秒與 45 秒動態簡報影片。新增 `docs/user-guide.md`（12 章：總覽、安裝、啟動、介面導覽、卡片操作、卡片與 Session 連動、對話分類顯示、Session 心智圖、計畫匯入、Claude App 窗格、排錯、資料與安全），開頭嵌入 45 秒影片，第 4 章以打碼後的真實看板截圖加 17 個紅框編號說明，第 6、8 章使用影片畫面。
+- 影片以 `work/promo-video/` 的 Canvas 動畫頁（promo.html、scenes-long.js）＋headless Chrome WebCodecs 逐格編碼＋純 Python MP4 封裝產生，不需 ffmpeg；音樂由 OfflineAudioContext 合成。`.gitignore` 的 `work/` 改為 `work/*` 並納入 `work/promo-video/`（中間產物 enc／frames／verify 仍排除）。
+- VERIFIED：兩支 MP4 在 Chrome 內解碼（1080p30、15.02 秒與 45.01 秒、AAC 無削波）並人工檢視關鍵影格。NOT VERIFIED：Windows 媒體播放器／PowerPoint 實際播放。
+
 ## 2026-10-13：Claude App 倒回對話不再多建鏡像卡
 
 - 使用者問為何看板有兩張同標題卡。查 App 中繼資料發現倒回（rewind）後 CLI session id 改變，舊 id 列在 `priorCliSessionIds`。claude_sessions.py 回傳 `priorIds`；server.py 新增 `forked_card()`／`adopt_fork()`／`fold_forks()`，鏡像回合與 `claude_list()` 同步把原卡改綁新 id，並把舊 id 的 runs 併入新 session（使用者回報詳情仍列兩個相同 session 後加入）。使用者同意後合併 056C36 進 8142B6（先備份資料庫、停服務、合併、重啟）。Python 76 項通過；正式服務只剩一張卡，詳情只列一個來源 session。

@@ -12,7 +12,7 @@ Windows 本機工具，讓 Codex 與 Claude Code 共用任務看板、排程、�
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File outputs/taskboard/start.ps1
 ```
 
-Codex App 專用視窗整合、Claude Code 原生窗格安裝與完整操作說明，見 [看板 README](outputs/taskboard/README.md)。
+完整操作手冊（安裝、啟動、卡片操作、Session 連動、對話分類、心智圖、計畫匯入、排錯）見 [docs/user-guide.md](docs/user-guide.md)，開頭附 45 秒功能展示影片；Codex App 專用視窗整合與 Claude Code 原生窗格的背景說明見 [看板 README](outputs/taskboard/README.md)。
 
 ## 近期功能
 

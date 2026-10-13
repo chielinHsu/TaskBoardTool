@@ -1,4 +1,10 @@
-work/
+work/*
+!work/promo-video/
+work/promo-video/enc/
+work/promo-video/enc-long/
+work/promo-video/frames/
+work/promo-video/frames-long/
+work/promo-video/verify/
 **/__pycache__/
 .claude/settings.local.json
 .claude/worktrees/

@@ -1,4 +1,9 @@
-# 交接（2026-10-13）：Claude App 倒回對話後不再多建一張鏡像卡
+# 交接（2026-10-13）：操作手冊與簡報影片已提交；上一輪為 App 倒回沿用原卡
+
+## 最新（同日續五）：操作手冊與 15／45 秒動態簡報影片
+- 新增 `docs/user-guide.md`（12 章，開頭嵌 45 秒影片，第 4 章打碼標註截圖）與 `docs/images/`；`work/promo-video/` 納入 Git（.gitignore 改 `work/*` ＋ `!work/promo-video/`，enc／frames／verify 排除）。
+- 影片管線：promo.html／scenes-long.js（Canvas＋OfflineAudioContext）→ encode.mjs（headless Chrome WebCodecs）→ mux.py（stdlib MP4 封裝）→ verify.mjs；MediaRecorder 即時錄製會掉格，已棄用。
+- VERIFIED：MP4 解碼與影格檢視。NOT VERIFIED：其他播放器；手冊步驟未在真實看板逐項重演。不涉及看板程式碼。
 
 ## 最新（同日續四）：App 倒回（rewind）沿用原卡
 - 根因（Observed Fact）：App 倒回訊息會改用新的 CLI session id，舊 id 記在 local_*.json 的 `priorCliSessionIds`／`rewindEdges`；`mirror_turn` 只以 (tool, sessionId) 找卡，新 id 便另建卡（8142B6 與 056C36 同標題）。
