@@ -128,17 +128,31 @@
     button.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();open();});
     row.append(button);reference.parentElement.after(row);
   }
-  function ensurePanel() {
-    if (document.getElementById(PANEL)) return;
-    const panel = document.createElement('section');
-    panel.id = PANEL; panel.hidden = !active; panel.setAttribute('aria-label','任務看板工作區');
+  function createFrame() {
     const frame = document.createElement('iframe');
     frame.title = 'Caspar 的任務看板'; frame.src = 'about:blank'; frame.name = 'caspar-board-'+crypto.randomUUID();
     frame.setAttribute('allow','clipboard-write');
     frame.setAttribute('sandbox','allow-scripts allow-forms allow-modals allow-downloads allow-popups');
+    return frame;
+  }
+  function ensurePanel() {
+    if (document.getElementById(PANEL)) return;
+    const panel = document.createElement('section');
+    panel.id = PANEL; panel.hidden = !active; panel.setAttribute('aria-label','任務看板工作區');
     // prepare() resets readiness before document replacement. A delayed native
     // load event must not clear an authenticated ready message from that document.
-    panel.append(frame); document.body.append(panel);
+    panel.append(createFrame()); document.body.append(panel);
+  }
+  // Page.setDocumentContent keeps the frame's JS realm (document.open semantics): a second board document
+  // would hit "TOKEN already declared" and leave the old script running without its message listener.
+  // A replaced iframe gets a fresh realm; until prepare() its messages carry no accepted capability.
+  function resetFrame() {
+    const old = document.querySelector(`#${PANEL} iframe`);
+    if (!old) return null;
+    const frame = createFrame();
+    capability = ''; frameLoaded = false;
+    old.replaceWith(frame);
+    return frame.name;
   }
   function open() {
     ensureEntry(); ensureTextEntry(); ensurePanel(); active = true;
@@ -199,6 +213,7 @@
   window.__casparTaskboard = {
     open,close,
     prepare:value=>{capability=value;frameLoaded=false;},
+    resetFrame,
     respond:reply=>{document.querySelector(`#${PANEL} iframe`)?.contentWindow?.postMessage({type:'caspar-board-response',capability,reply},'*');},
     status:()=>({entryPresent:!!document.getElementById(ENTRY),textEntryPresent:!!document.getElementById(TEXT_ENTRY),active,frameLoaded,frameName:document.querySelector(`#${PANEL} iframe`)?.name,frameUrl:boardUrl.href,geometry:geometry(),theme:theme()}),
     destroy:()=>{destroyed=true;close();observer.disconnect();resizeObserver.disconnect();clearInterval(timer);themeProbe.remove();window.removeEventListener('message',frameMessage);window.removeEventListener('resize',schedule);document.removeEventListener('click',nativeNavigation,true);document.removeEventListener('keydown',nativeNavigation,true);[ENTRY,TEXT_ENTRY,PANEL,STYLE].forEach(id=>document.getElementById(id)?.remove());delete window.__casparTaskboard;}

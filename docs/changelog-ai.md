@@ -1,5 +1,10 @@
 # AI 工作紀錄
 
+## 2026-10-13：修正服務重啟後 Codex App 嵌入看板卡死，並修 CDP 連線外洩
+
+- 使用者要求查明 App 開著時重啟服務後看板一直「連線中斷」的原因。以 App 開著重啟服務重現；CDP 唯讀探測發現 helper 有打服務、回應也送進 frame，但 frame 的 `api()` 不完成；frame 全域 TOKEN 為舊值、body 無 `embedded`，確認 `Page.setDocumentContent` 重用 realm 導致新主程式因重複宣告不執行、舊程式失去 message 監聽。
+- 修正 app-panel.js（`createFrame`、`resetFrame`）與 app-injector.mjs（403→`reloadFrame`→換新 iframe 再載入；新連線先持有、失敗關閉）；taskboard-app.test.mjs 兩個動畫檢查改輪詢。實機以 worktree helper 驗證重啟服務後自動恢復、CDP 連線 2 條；App 測試視窗可見時 4 項 PASS。實際失敗：視窗被最小化時測試動畫檢查失敗；舊 helper stop 後因外洩連線不退出，手動結束 PID 30748。
+
 ## 2026-10-12：回報渲染 Markdown 與 Mermaid 圖（網頁版與 Codex 內嵌版）
 
 - 使用者要求回報能渲染 Markdown 與 Mermaid（流程圖、循序圖、類別圖），兩種頁面都要支援，函式庫由安裝腳本下載、不進 Git。查證 11.6.0（使用者建議）有 XSS／注入公告，經使用者同意改下載 11.17.2（3,572,661 bytes，SHA-256 581ed7d7…390eb8）。

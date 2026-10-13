@@ -1,5 +1,13 @@
 # 目前狀態
 
+## 2026-10-13：App 開著時重啟看板服務，嵌入看板卡在「連線中斷」
+
+- 根因（實驗重現並查證）：服務重啟換 token，嵌入頁的舊 token 打 API 得 403，app-injector 把 `loadedFrame` 設 null，下一輪對**同一個 iframe** `Page.setDocumentContent`。這是 `document.open()` 語意：換文件、清 window 事件監聽，但保留 JS 全域環境；新主程式在 `const TOKEN` 重複宣告失敗而整段不執行（frame 全域 TOKEN 仍舊值、body 無 `embedded` class），舊程式用新 capability 發 RPC，helper 有回應、訊息也送達 frame（capability 正確），但已無監聽器收，畫面一直「連線中斷」。與 Mermaid 無關，自此功能以來即存在。
+- 修正：app-panel.js 新增 `resetFrame()`（`createFrame()` 建全新 iframe 取代舊的，清 capability／frameLoaded）；app-injector.mjs 403 改設 `reloadFrame`，主迴圈先 `resetFrame()` 再 `loadFrame()`，新文件拿到乾淨 realm。另修 CDP 連線外洩：建立連線時先持有 `connection`，設定中途失敗由外層關閉（舊 helper 累積 19～31 條 9232 連線，且 stop-app.ps1 後程序因此無法結束）。
+- taskboard-app.test.mjs：入口圖示選取／取消的檢查從固定等 300 ms 改為最多輪詢 2 秒；主頁面會因看板每 2.5 秒輪詢 634 KB state（399 張卡，386 張唯讀同步卡）而週期性停頓 200～570 ms，固定等待會偶發失敗。
+- VERIFIED（worktree 版 helper 接專用 App、正式服務）：App 開著重啟服務，約 35 秒後換上新 iframe、3 秒內 ready，新主程式執行、frame token＝服務 token、RPC 正常；修正前同操作卡死需重開 App。新 helper 維持 2 條 CDP 連線。`node --check` 通過。App 測試在視窗可見時 4 項 PASS 一次；視窗最小化／被遮住（visibilityState hidden）時入口動畫不跑，第二項失敗，屬環境。另一偶發：重新載入前後卡片總數因 session 同步增減而不同（即時資料競態，未修）。
+- NOT VERIFIED：2 分鐘才重新載入的延遲成因（推測隱藏 iframe 計時器節流）；正式部署需合併後以 stop-app.ps1 + start-app.ps1（或桌面捷徑）重啟 helper，重開 App 不會換 helper。
+
 ## 2026-10-12：回報渲染 Markdown 與 Mermaid 圖
 
 - 看板的執行回報、session 最近回報、聊天紀錄（進度與回報；你的訊息維持純文字）、狀態列表完成訊息改以 Markdown 顯示；```mermaid 區塊畫成圖，配色跟 Appearance token 與明暗主題，切換時即時重新上色；圖無法解析或函式庫未安裝時顯示原始碼與原因。

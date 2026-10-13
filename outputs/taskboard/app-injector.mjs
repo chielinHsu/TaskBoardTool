@@ -55,7 +55,8 @@ try {
         let connection=connections.get(target.id);
         try {
           if(!connection) {
-            const cdp=new Cdp(target.webSocketDebuggerUrl); await cdp.ready;
+            // Held before setup finishes so a failed step closes this session instead of leaking it.
+            const cdp=new Cdp(target.webSocketDebuggerUrl); connection={cdp,scriptId:null}; await cdp.ready;
             await cdp.send('Page.enable');
             await cdp.send('Runtime.enable');
             await cdp.evaluate('window.__casparTaskboard?.destroy()');
@@ -63,7 +64,7 @@ try {
             // Restricted to this launcher's independent profile; required by the host's frame CSP.
             await cdp.send('Page.setBypassCSP',{enabled:true});
             const script=await cdp.send('Page.addScriptToEvaluateOnNewDocument',{source});
-            connection={cdp,scriptId:script.identifier}; connections.set(target.id,connection);
+            connection.scriptId=script.identifier; connections.set(target.id,connection);
             await cdp.evaluate(`window.__casparTaskboardScriptId=${JSON.stringify(script.identifier)}`);
             const bound=connection;
             cdp.on('Runtime.bindingCalled',async event=>{
@@ -75,7 +76,7 @@ try {
                 // Only the execution-tool selector is accepted as a query; everything else stays path-only.
                 if(!/^\/api\/[a-zA-Z0-9/_-]+(\?tool=(codex|claude))?$/.test(request.path) || request.path==='/api/shutdown' || !['GET','POST','PATCH','DELETE'].includes(request.method))throw Error('Unsupported board request');
                 const response=await fetch(config.boardUrl+request.path,{method:request.method,headers:{'X-Board-Token':bound.token,'Content-Type':'application/json'},body:request.data===undefined?undefined:JSON.stringify(request.data),signal:AbortSignal.timeout(18000)});
-                const data=await response.json();if(!response.ok){if(response.status===403 && data.error==='請重新開啟看板。')bound.loadedFrame=null;throw Error(data.error||'看板操作失敗');}reply.data=data;
+                const data=await response.json();if(!response.ok){if(response.status===403 && data.error==='請重新開啟看板。')bound.reloadFrame=true;throw Error(data.error||'看板操作失敗');}reply.data=data;
               }catch(error){reply.error=error.message;}
               if(request.capability!==bound.capability)return;
               try {await cdp.evaluate(`window.__casparTaskboard?.respond(${JSON.stringify(reply)})`);}catch{}
@@ -84,6 +85,8 @@ try {
           }
           let panel=await connection.cdp.evaluate('window.__casparTaskboard?.status() || null');
           if(!panel){await connection.cdp.evaluate(source);panel=await connection.cdp.evaluate('window.__casparTaskboard?.status() || null');}
+          // The service restarted with a new token: load the board into a fresh iframe, never into the used one (see resetFrame).
+          if(connection.reloadFrame && panel?.frameName){connection.reloadFrame=false;await connection.cdp.evaluate('window.__casparTaskboard.resetFrame()');panel=await connection.cdp.evaluate('window.__casparTaskboard?.status() || null');}
           if(panel?.frameName) await loadFrame(connection,panel);
           const showRequest=fs.existsSync(showPath)?fs.readFileSync(showPath,'utf8').trim():'';
           if(showRequest && showRequest!==shownRequest && panel?.entryPresent){

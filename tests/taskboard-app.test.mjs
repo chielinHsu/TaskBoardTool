@@ -37,11 +37,15 @@ try {
  assert.equal(dark.bg,initial.theme.colors.bg);assert.equal(dark.ink,initial.theme.colors.ink);assert.equal(dark.accent,initial.theme.colors.accent);assert.equal(dark.offline,false);
  console.log('PASS: real host theme matches board, cards and dialogs; API online');
  await cdp.evaluate('window.__casparTaskboard.close()');
- await cdp.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:900,y:500});await wait(300);
- const idle=await cdp.evaluate(`(()=>{const e=document.querySelector('#caspar-taskboard-entry'),native=document.querySelector('nav[data-app-navigation-rail] button[data-selected]');return {bg:getComputedStyle(e).backgroundColor,opacity:getComputedStyle(e,'::before').opacity,width:e.getBoundingClientRect().width,nativeBg:native?getComputedStyle(native,'::before').backgroundColor:null,variant:e.dataset.variant,size:e.dataset.size};})()`);
+ await cdp.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:900,y:500});
+ // Same transition timing as the selected check below: poll until the fade-out lands.
+ let idle;
+ for(let attempt=0;attempt<20;attempt++){await wait(100);idle=await cdp.evaluate(`(()=>{const e=document.querySelector('#caspar-taskboard-entry'),native=document.querySelector('nav[data-app-navigation-rail] button[data-selected]');return {bg:getComputedStyle(e).backgroundColor,opacity:getComputedStyle(e,'::before').opacity,width:e.getBoundingClientRect().width,nativeBg:native?getComputedStyle(native,'::before').backgroundColor:null,variant:e.dataset.variant,size:e.dataset.size};})()`);if(idle.opacity==='0')break;}
  assert.equal(idle.bg,'rgba(0, 0, 0, 0)');assert.ok(idle.width>=32);assert.equal(idle.variant,'ghost');assert.equal(idle.size,'xl');
- await cdp.evaluate('window.__casparTaskboard.open()');await wait(300);
- const selected=await cdp.evaluate(`(()=>{const e=document.querySelector('#caspar-taskboard-entry'),s=getComputedStyle(e,'::before');return {bg:s.backgroundColor,opacity:s.opacity};})()`);
+ await cdp.evaluate('window.__casparTaskboard.open()');
+ // The 0.15s transition can sit behind a host main-thread stall (board polling a large state), so poll instead of one fixed wait.
+ let selected;
+ for(let attempt=0;attempt<20;attempt++){await wait(100);selected=await cdp.evaluate(`(()=>{const e=document.querySelector('#caspar-taskboard-entry'),s=getComputedStyle(e,'::before');return {bg:s.backgroundColor,opacity:s.opacity};})()`);if(selected.opacity==='1')break;}
  assert.equal(idle.opacity,'0');assert.equal(selected.opacity,'1');assert.notEqual(selected.bg,'rgba(0, 0, 0, 0)');if(idle.nativeBg)assert.equal(selected.bg,idle.nativeBg);
  console.log('PASS: icon transparent when idle, native size/background when selected');
  savedTheme=await cdp.evaluate(`(()=>{const root=document.documentElement,keys=${JSON.stringify(Object.keys(overrides))};return {mode:root.getAttribute('data-theme'),values:Object.fromEntries(keys.map(k=>[k,{value:root.style.getPropertyValue(k),priority:root.style.getPropertyPriority(k)}]))};})()`);
