@@ -1,5 +1,11 @@
 # AI 工作紀錄
 
+## 2026-10-13：卡片 Session 心智圖
+
+- 使用者要求卡片加入 session 心智圖，快速看出卡片關聯幾個 session、每個 session 有幾次對話。index.html：`/* taskboard-session-map:start/end */` 區段（`mapSessions`、`sessionTurnCount`、`mapCounts`、`openSessionMap`、`loadMapCounts`、`renderSessionMap`、`focusMapTarget`）、`#map-dialog`、卡片頁尾 `.card-map` 按鈕、詳情 `#open-map`；run 類型／狀態文字抽成 `RUN_KIND`／`RUN_STATUS` 與詳情共用，`.run-record` 加 `data-run-index`；refresh 時心智圖依 key 比對才重畫。
+- VERIFIED：inline script 解析、Node 18 項、Browser 窗格隔離 fixture 實測（計數、分色、唯讀讀回合數、點擊跳轉、明暗、375px）。NOT VERIFIED：正式服務與 Codex App 內嵌。實際失敗：Python 3.9 `write_text` 不支援 `newline` 參數，改 `write_bytes`（保持 LF）。
+- 同日續（展開縮放）：`mapCollapsed`（taskId→收合的 session key）、`mapToggle`（`aria-expanded`、`data-key` 重畫後還原焦點）、`setMapCollapsed`、`applyMapZoom`／`zoomMap`（以錨點保持游標下位置、fit 不放大超過 100%）、畫布 wheel（passive:false）／keydown／pointer 拖曳平移、視窗 resize 時重新 fit；`#map-dialog.map-full[open]` 改 flex 版面。實際失敗：初版放大視窗以 `calc(100% - 72px)` 估標頭高度造成對話框捲軸，改 flex；初版焦點以 8 字元 id 前綴比對可能錯配，改 session key；Python 3.9 從 stdin 讀中文長行誤報 Non-UTF-8（改寫檔加 coding 宣告）。
+
 ## 2026-10-13：修正服務重啟後 Codex App 嵌入看板卡死，並修 CDP 連線外洩
 
 - 使用者要求查明 App 開著時重啟服務後看板一直「連線中斷」的原因。以 App 開著重啟服務重現；CDP 唯讀探測發現 helper 有打服務、回應也送進 frame，但 frame 的 `api()` 不完成；frame 全域 TOKEN 為舊值、body 無 `embedded`，確認 `Page.setDocumentContent` 重用 realm 導致新主程式因重複宣告不執行、舊程式失去 message 監聽。

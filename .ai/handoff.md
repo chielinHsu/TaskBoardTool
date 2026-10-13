@@ -16,13 +16,18 @@
 - NOT VERIFIED：真實 App 改名端到端；ad11df 改名；mod 未改，不需同步。
 - 實際失敗：Python `write_text` 把 server.py 寫成 CRLF，已還原 LF；`taskboard-sessions-app.test.mjs` 打正式舊服務（版本 1.8.0、活躍 session 訊號時間變動）失敗，與修改無關，重啟後重跑。
 
+## 同時進行：卡片 Session 心智圖（另一個 session，只改 index.html）
+- 卡片頁尾「◎ N session · M 對話」與詳情「◎ Session 心智圖」開 `#map-dialog`：SVG 卡片 → session（工具分色）→ 每次對話（狀態色點）；點 session 開聊天紀錄、點對話跳到詳情該次回報。無看板 run 的 session 開圖時讀 `/api/chat` 計回合（最多 20，「20+」）。區段 `/* taskboard-session-map:start/end */`；`RUN_KIND`／`RUN_STATUS` 與詳情共用。純前端，API 不變。
+- VERIFIED：inline script 解析、Node 18 項、Browser 窗格隔離 fixture 實測計數／跳轉／明暗／375px。NOT VERIFIED：正式服務、Codex App 內嵌；未加自動化測試（DOM 測試需專用 App CDP）。
+- 展開縮放（同日續）：session 右側 ＋／− 收合、全部展開／收合、放大視窗、縮放 30%～300%（按鈕、Ctrl＋滾輪、＋／−／0 鍵）、拖曳平移；隔離 fixture 實測通過，觸控雙指縮放未實作。
+
 ## 下一步
 1. 讓 `taskboard-sessions-app.test.mjs` 比對卡片時排除衍生的 `sessionStatus`（目前活躍 session 會讓它失敗）。
 2. 在 Claude App 改一個 session 名稱，約 15 秒後確認卡片標題跟著變；在看板改標題後再於 App 改名，確認不覆寫。
 3. （已修正，見下方 8bfb6c9）App 開著時服務重啟後 frame RPC 無回應。
 
 ## 相關檔案
-outputs/taskboard/server.py、outputs/taskboard/claude_sessions.py、tests/test_taskboard_mirror.py、tests/test_taskboard_plans.py、tests/test_taskboard_tools.py、tests/taskboard-sessions-app.test.mjs、AI_CONTEXT.md、docs/decisions.md、docs/architecture.md、docs/current-status.md、docs/changelog-ai.md、.ai/handoff.md。
+outputs/taskboard/server.py、outputs/taskboard/claude_sessions.py、tests/test_taskboard_mirror.py、tests/test_taskboard_plans.py、tests/test_taskboard_tools.py、tests/taskboard-sessions-app.test.mjs、outputs/taskboard/index.html（心智圖）、AI_CONTEXT.md、docs/decisions.md、docs/architecture.md、docs/current-status.md、docs/changelog-ai.md、.ai/handoff.md。
 
 ## 不要動
 真實 .data／profile／認證；正式 47824 服務與專用 App 除非使用者要求；不提交 vendor/；stage 明列路徑，禁止 git add .／-A。

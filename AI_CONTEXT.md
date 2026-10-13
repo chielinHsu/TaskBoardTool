@@ -20,7 +20,7 @@ Python 標準函式庫 HTTP server／SQLite／subprocess RPC；原生 HTML／CSS
 | outputs/taskboard/update-claude-mod.ps1 | 舊流程：將原始碼同步至 Claude App session 專屬 .claude/dev-mods 安裝副本；-Check 唯讀比對，更新前備份至 work，更新後雜湊核對 |
 | outputs/taskboard/setup-mermaid.mjs、vendor/ | 下載固定版本 Mermaid 並以 SHA-256 核對（--check 唯讀）；vendor/ gitignore，`GET /api/vendor/mermaid` 核對安裝紀錄後以 JSON 供應 |
 | outputs/taskboard/plan_import.py | 終端機／Codex 匯入計畫 JSON 到 `/api/plans`（stdlib、loopback） |
-| outputs/taskboard/index.html | 看板、卡片、詳情、theme message |
+| outputs/taskboard/index.html | 看板、卡片、詳情、Session 心智圖（taskboard-session-map 區段）、theme message |
 | outputs/taskboard/folder_picker.py、select-folder.ps1 | Windows 原生資料夾選擇工作、輪詢／取消／300 秒逾時；只回傳路徑，不寫任務 |
 | outputs/taskboard/app-panel.js | 入口、可見工作區尺寸、選取狀態、theme bridge |
 | outputs/taskboard/app-injector.mjs、cdp.mjs | CDP 文件載入、API bridge、重連 |
