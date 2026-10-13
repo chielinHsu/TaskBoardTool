@@ -56,6 +56,7 @@
 
 - 使用者要求查明 App 開著時重啟服務後看板一直「連線中斷」的原因。以 App 開著重啟服務重現；CDP 唯讀探測發現 helper 有打服務、回應也送進 frame，但 frame 的 `api()` 不完成；frame 全域 TOKEN 為舊值、body 無 `embedded`，確認 `Page.setDocumentContent` 重用 realm 導致新主程式因重複宣告不執行、舊程式失去 message 監聽。
 - 修正 app-panel.js（`createFrame`、`resetFrame`）與 app-injector.mjs（403→`reloadFrame`→換新 iframe 再載入；新連線先持有、失敗關閉）；taskboard-app.test.mjs 兩個動畫檢查改輪詢。實機以 worktree helper 驗證重啟服務後自動恢復、CDP 連線 2 條；App 測試視窗可見時 4 項 PASS。實際失敗：視窗被最小化時測試動畫檢查失敗；舊 helper stop 後因外洩連線不退出，手動結束 PID 30748。
+- 同日 12:15 部署到主 checkout：helper 換成主 checkout 版、App 開著重啟服務 12 秒內自動恢復、App 測試 4 項 PASS；刪除 worktree 誤啟動的空資料庫。
 
 ## 2026-10-13：鏡像卡標題去掉 `<system-reminder>` 並跟隨 Claude App session 標題
 

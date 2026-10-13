@@ -14,7 +14,8 @@
 - 修正：app-panel.js 新增 `resetFrame()`（`createFrame()` 建全新 iframe 取代舊的，清 capability／frameLoaded）；app-injector.mjs 403 改設 `reloadFrame`，主迴圈先 `resetFrame()` 再 `loadFrame()`，新文件拿到乾淨 realm。另修 CDP 連線外洩：建立連線時先持有 `connection`，設定中途失敗由外層關閉（舊 helper 累積 19～31 條 9232 連線，且 stop-app.ps1 後程序因此無法結束）。
 - taskboard-app.test.mjs：入口圖示選取／取消的檢查從固定等 300 ms 改為最多輪詢 2 秒；主頁面會因看板每 2.5 秒輪詢 634 KB state（399 張卡，386 張唯讀同步卡）而週期性停頓 200～570 ms，固定等待會偶發失敗。
 - VERIFIED（worktree 版 helper 接專用 App、正式服務）：App 開著重啟服務，約 35 秒後換上新 iframe、3 秒內 ready，新主程式執行、frame token＝服務 token、RPC 正常；修正前同操作卡死需重開 App。新 helper 維持 2 條 CDP 連線。`node --check` 通過。App 測試在視窗可見時 4 項 PASS 一次；視窗最小化／被遮住（visibilityState hidden）時入口動畫不跑，第二項失敗，屬環境。另一偶發：重新載入前後卡片總數因 session 同步增減而不同（即時資料競態，未修）。
-- NOT VERIFIED：2 分鐘才重新載入的延遲成因（推測隱藏 iframe 計時器節流）；正式部署需合併後以 stop-app.ps1 + start-app.ps1（或桌面捷徑）重啟 helper，重開 App 不會換 helper。
+- NOT VERIFIED：35 秒～2 分鐘才重新載入的延遲成因（推測隱藏 iframe 計時器節流；視窗可見時實測 8 秒）。部署方式：stop-app.ps1 + start-app.ps1（或桌面捷徑）重啟 helper，重開 App 不會換 helper。
+- 主 checkout 部署 VERIFIED（同日 12:15）：對方 session 合併 origin/main 後主 checkout 含修正（三檔與分支相同）；worktree helper 以 app-stop 控制檔停止後自行結束（舊版因外洩連線無法退出）；主 checkout start-app.ps1 啟動 helper（PID 31644，2 條 CDP 連線）；確認無派工後 App 開著重啟服務，12:15:21 重啟→12:15:29 換新 iframe→12:15:33 ready，新主程式執行、token 一致、RPC 約 2 秒；主 checkout `node tests/taskboard-app.test.mjs` 4 項 PASS（視窗可見）。另刪除 worktree 誤啟動留下的 `outputs/taskboard/.data`（使用者同意）。
 
 ## 2026-10-13：鏡像卡標題不再是 `<system-reminder>`，並跟隨 Claude App 的 session 標題
 
