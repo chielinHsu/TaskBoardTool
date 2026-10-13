@@ -1,3 +1,10 @@
+# 2026-10-13：GitHub AI PR／CI 與 Pages 展示
+
+- 新增三種路由、維護者 Issue 派工、隔離模型與發布 job、最新 SHA 審查／合併 gate，以及 CI／Pages 明確 dispatch。
+- 新增跨平台 CI、純前端範例資料層、靜態建置器、Chromium 展示操作驗證；不修改本機正式資料／服務。
+- VERIFIED：Python 77、Node 30、路由 74、Chrome 展示；真實模型與自動合併需 Secrets。GitHub CI run 38383501615 三項通過，Pages 於合併後發布。
+- 修正展示建置的尾端分隔符比對；既有交接超長以新交接取代；Linux 結構檢查支援 pwsh。
+
 # AI 工作紀錄
 
 ## 2026-10-13：操作手冊與動態簡報影片

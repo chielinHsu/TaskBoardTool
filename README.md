@@ -1,5 +1,7 @@
 # TaskBoardTool：本機 AI 任務管理看板
 
+[互動展示（GitHub Pages）](https://chielinhsu.github.io/TaskBoardTool/) · [Claude／Codex 自動 PR、CI 與發布設定](docs/github-automation.md)
+
 Windows 本機工具，讓 Codex 與 Claude Code 共用任務看板、排程、任務紀錄與人工驗收；也能唯讀追蹤本機既有對話。
 
 ## 執行
