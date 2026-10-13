@@ -1,5 +1,11 @@
 # AI 工作紀錄
 
+## 2026-10-13：Ctrl＋M 快捷鍵開關 Session 心智圖
+
+- 使用者要求以 Ctrl＋字母／數字叫出心智圖。選 Ctrl＋M（Map；Ctrl＋數字在瀏覽器是切分頁，Ctrl＋K／E／G 等常被宿主或瀏覽器使用）。
+- index.html（taskboard-session-map 區段）：`pointerover` 記住滑鼠指著的卡片 `mapHoverId`；`mapShortcutTask()` 依序取已開詳情、焦點卡片、指著的卡片；全域 keydown 遇 Ctrl／Cmd＋M（不含 Alt、Shift、長按重複）一律 preventDefault，心智圖已開則關閉，否則開啟對象，沒有對象 toast 提示。詳情「◎ Session 心智圖」、卡片頁尾按鈕的 title 與心智圖說明列加上快捷鍵說明。
+- VERIFIED：兩段 inline script 解析；Node 主題＋Markdown 18 項；details／drag／projects DOM 測試（Node spawn 的 `python` 是 Store alias 會靜默結束，PATH 前置 Python39 後通過）；scratchpad CDP 腳本對隔離 fixture 送真實滑鼠移動與 Ctrl＋M：指向開啟、再按關閉、無對象出提示、詳情內開啟與關閉後詳情仍開、Tab 焦點卡片開啟、無頁面錯誤。NOT VERIFIED：正式服務、Codex App 內嵌 iframe、Claude App Browser 窗格；未加入版本化測試。
+
 ## 2026-10-13：session 只顯示真正的第一次提問，延續次數改為純文字
 
 - 使用者回報：(1)「另有 N 次延續對話，在『查看對話』展開」的可點虛框和下方「查看對話」按鈕重複，只要保留資訊；(2) 第一筆不需要縮排收合，而且顯示的是「下一個問題」，不是這個 session 第一次提問。根因：鏡像卡在 session 換 id 後才建立，`runs[0]` 是較晚的回合；`/api/chat` 只讀尾端 20 回合，長 session 的第一句已不在視窗內。

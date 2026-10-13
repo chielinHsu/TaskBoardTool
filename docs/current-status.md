@@ -6,6 +6,7 @@
 - 對話數＝看板 run；沒有看板 run 的 session（同步唯讀卡、來源對話）開圖時讀 `/api/chat` 計回合數（最多 20，超過顯示「20+」），結果快取後卡片按鈕也顯示。單一 session 超過 12 次對話時只畫最近 11 次加一個「較早 N 次」節點；派工未建立對話的 run 歸在「未建立對話」。只用 createElementNS 與文字節點，配色走 CSS token，純前端，不改 API／資料。
 - VERIFIED：index.html 兩段 inline script 解析；Node 主題＋Markdown 18 項；Browser 窗格以隔離 fixture（`tests/taskboard_details_fixture.py`，假 RPC）實測：完整任務卡 2 session／3 對話、Claude 接手卡分色、唯讀卡讀到 1 回合後卡片按鈕更新、點對話跳到第 2 筆 run 並標示、詳情內開圖、session 節點 Enter 開聊天紀錄；暗色、亮色、375px（圖在容器內橫向捲動，頁面不溢出）。NOT VERIFIED：正式 47824 服務與 Codex App 內嵌畫面；未新增自動化測試（details／App DOM 測試需專用 Codex App CDP）。
 - 同日續：使用者要求心智圖可展開縮放。每個 session 右側 ＋／− 圓鈕展開或收合該 session 的對話（收合狀態依卡片保留在頁面記憶體），工具列「全部展開／全部收合」、「⛶ 放大視窗」（98vw×96vh）、縮放 −／百分比（回 100%）／＋／符合寬度；畫布內 Ctrl＋滾輪以游標為中心縮放（30%～300%）、拖曳空白處平移、聚焦畫布時 ＋／−／0 鍵；開啟時符合寬度但不小於 60%（手機可讀）。VERIFIED：script 解析、Node 18 項、隔離 fixture 實測收合／全部展開收合／按鈕與滾輪縮放／真實滑鼠拖曳平移／放大視窗無溢出／鍵盤 Enter 收合後焦點保留／0 鍵符合寬度、375px 暗色開啟 60%、無 console 錯誤。NOT VERIFIED：觸控雙指縮放（未實作，手機用按鈕；拖曳平移只對滑鼠）、正式服務與 Codex App 內嵌。
+- 同日續：使用者要求快捷鍵叫出心智圖。新增 Ctrl＋M（Mac 為 Cmd＋M）：滑鼠指著卡片、用 Tab 選到卡片，或已開啟卡片詳情時按下即開啟該卡心智圖，再按一次關閉；沒有對象時顯示提示。詳情按鈕、卡片按鈕的提示文字與心智圖說明列都標出快捷鍵。VERIFIED：script 解析、Node 18 項、details／drag／projects DOM 測試；隔離 fixture 以 CDP 真實按鍵實測滑鼠指向開啟、再按關閉、無對象出提示、詳情內開啟且關閉後詳情保留、鍵盤焦點卡片開啟、無頁面錯誤。NOT VERIFIED：正式服務、Codex App 內嵌 iframe（焦點須在看板 iframe 內）、Claude App Browser 窗格是否先攔截 Ctrl＋M。
 
 ## 2026-10-13：App 開著時重啟看板服務，嵌入看板卡在「連線中斷」
 

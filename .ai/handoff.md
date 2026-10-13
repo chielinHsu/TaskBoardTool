@@ -35,6 +35,7 @@
 - 卡片頁尾「◎ N session · M 對話」與詳情「◎ Session 心智圖」開 `#map-dialog`：SVG 卡片 → session（工具分色）→ 每次對話（狀態色點）；點 session 開聊天紀錄、點對話跳到詳情該次回報。無看板 run 的 session 開圖時讀 `/api/chat` 計回合（最多 20，「20+」）。區段 `/* taskboard-session-map:start/end */`；`RUN_KIND`／`RUN_STATUS` 與詳情共用。純前端，API 不變。
 - VERIFIED：inline script 解析、Node 18 項、Browser 窗格隔離 fixture 實測計數／跳轉／明暗／375px。NOT VERIFIED：正式服務、Codex App 內嵌；未加自動化測試（DOM 測試需專用 App CDP）。
 - 展開縮放（同日續）：session 右側 ＋／− 收合、全部展開／收合、放大視窗、縮放 30%～300%（按鈕、Ctrl＋滾輪、＋／−／0 鍵）、拖曳平移；隔離 fixture 實測通過，觸控雙指縮放未實作。
+- Ctrl＋M 快捷鍵（同日續）：全域 keydown（Ctrl 或 Cmd，不含 Alt／Shift）開關心智圖；對象依序為已開的卡片詳情、鍵盤焦點所在卡片、滑鼠指著的卡片（`pointerover` 記 `mapHoverId`），都沒有則 toast 提示；心智圖已開則關閉。一律 preventDefault，避免 Electron 宿主的 Ctrl＋M（最小化）在看板有焦點時觸發。隔離 fixture 以 CDP 真實按鍵實測通過；正式服務、Codex App 內嵌 iframe、Claude App Browser 窗格未實測。
 
 ## 下一步
 1. 讓 `taskboard-sessions-app.test.mjs` 比對卡片時排除衍生的 `sessionStatus`（目前活躍 session 會讓它失敗）。
