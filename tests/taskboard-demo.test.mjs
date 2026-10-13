@@ -1,0 +1,46 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const context = vm.createContext({Date, JSON, Map, Set, setTimeout});
+vm.runInContext(fs.readFileSync(new URL('../sites/demo/demo.js', import.meta.url), 'utf8'), context);
+const create = options => context.TaskboardDemo.createDemo(options);
+test('展示 CRUD、版本保護、循環依賴與隔離儲存', async () => {
+  const data = new Map(), storage = {getItem: k => data.get(k), setItem: (k, v) => data.set(k, v)};
+  const demo = create({storage}), api = demo.api;
+  const task = await api('/api/tasks', 'POST', {title: '<script>範例</script>', tool: 'claude'});
+  await api('/api/tasks/' + task.id, 'PATCH', {version: task.version, status: 'done'});
+  await assert.rejects(api('/api/tasks/' + task.id, 'PATCH', {version: task.version, title: '過期'}), /已有更新/);
+  const other = await api('/api/tasks', 'POST', {title: '依賴', dependsOn: [task.id]});
+  await assert.rejects(api('/api/tasks/' + task.id, 'PATCH', {dependsOn: [other.id]}), /循環/);
+  assert.equal((await create({storage}).api('/api/state')).tasks.length, 6);
+  await api('/api/tasks/' + task.id, 'DELETE');
+  assert.equal((await api('/api/state')).tasks.find(t => t.id === other.id).dependsOn.length, 0);
+  assert.equal((await create().api('/api/state')).tasks.length, 4);
+});
+test('模擬派工、對話、停止與重新載入都不需要模型', async () => {
+  const queue = [], demo = create({schedule: fn => queue.push(fn)}), api = demo.api;
+  const task = (await api('/api/state')).tasks.find(t => t.status === 'todo');
+  await api('/api/tasks/' + task.id + '/start', 'POST');
+  assert.equal((await api('/api/state')).activeId, task.id);
+  queue.shift()();
+  const saved = (await api('/api/state')).tasks.find(t => t.id === task.id);
+  assert.equal(saved.status, 'in_review');
+  assert.match((await api('/api/chat/' + saved.workerThreadId)).turns[0].items[1].text, /沒有呼叫 AI/);
+  await api('/api/tasks/' + task.id + '/start', 'POST');
+  await api('/api/tasks/' + task.id + '/stop', 'POST'); queue.shift()();
+  assert.equal((await api('/api/state')).tasks.find(t => t.id === task.id).status, 'backlog');
+  await assert.rejects(api('/api/folders/select', 'POST'), /無法存取本機/);
+  await assert.rejects(api('/api/vendor/mermaid'), /不載入外部/);
+});
+test('停止後立即重跑，舊回呼不能完成新的派工', async () => {
+  const queue = [], demo = create({schedule: fn => queue.push(fn)}), api = demo.api;
+  const task = (await api('/api/state')).tasks.find(t => t.status === 'todo');
+  await api('/api/tasks/' + task.id + '/start', 'POST');
+  await api('/api/tasks/' + task.id + '/stop', 'POST');
+  await api('/api/tasks/' + task.id + '/start', 'POST');
+  queue.shift()();
+  assert.equal((await api('/api/state')).tasks.find(t => t.id === task.id).status, 'in_progress');
+  queue.shift()();
+  assert.equal((await api('/api/state')).tasks.find(t => t.id === task.id).status, 'in_review');
+});

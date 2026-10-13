@@ -1,5 +1,37 @@
 # 目前架構
 
+## GitHub 工程自動化與 Pages 展示（ADR-022）
+
+修改前沒有 GitHub workflow，本機流程：
+
+```mermaid
+flowchart LR
+ UI[本機看板] --> API[loopback Python]
+ API --> DB[私人 SQLite]
+ API --> CLI[本機 Claude／Codex]
+```
+
+修改後保留本機流程，加入隔離自動化與靜態展示：
+
+```mermaid
+flowchart LR
+ Issue[維護者指令] --> Route[三種工具路由]
+ Route --> AI[模型 job：GitHub 唯讀]
+ AI --> JSON[完整檔案 JSON]
+ JSON --> Publish[獨立 job：驗證路徑／大小／base]
+ Publish --> PR[PR]
+ PR --> CI[跨平台與瀏覽器 CI]
+ CI --> Review[成功 CI 後 AI 只讀 diff]
+ Review --> Gate[合法核准／最新 SHA／CI／範圍]
+ Gate --> Merge[帶 SHA squash merge]
+ Merge --> Pages[明確 dispatch Pages]
+ Template[原 index.html] --> Build[只建置靜態三檔]
+ Demo[範例資料／localStorage] --> Build
+ Build --> Pages
+```
+
+Pages 不含 Python、SQLite、CLI、Secrets 或真實 session；展示不呼叫網路 API。發布端不執行模型產物，敏感修改留人工審查。
+
 ## 回報 Markdown 與 Mermaid 渲染（2026-10-12）
 
 修改前：run 結果、session 回報、聊天紀錄的回報段落與狀態列表的完成訊息都以 `el()`／`createTextNode` 放進 `pre-wrap` 方塊，Markdown 與 Mermaid 只顯示原始碼。

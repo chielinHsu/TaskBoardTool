@@ -1,0 +1,21 @@
+name: AI 實作任務
+description: 寫下可驗收的需求，再由維護者以 /ai 派工
+title: '[AI] '
+body:
+  - type: markdown
+    attributes:
+      value: '建立後，維護者在 Issue 留下單獨一行 /ai；/claude 或 /codex 可讓該次只使用指定工具。請勿填入認證或私人資料。'
+  - type: textarea
+    id: request
+    attributes:
+      label: 需求與目前行為
+      description: 問題、重現方式、預期行為及範圍
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 驗收條件
+      description: 如何測試與判定完成
+    validations:
+      required: true

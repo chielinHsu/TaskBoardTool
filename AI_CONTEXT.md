@@ -30,6 +30,8 @@ Python 標準函式庫 HTTP server／SQLite／subprocess RPC；原生 HTML／CSS
 | .agents／.claude／scripts/ai | 共用協作骨架、Claude 設定及檢查 |
 
 ## 建置與測試
+GitHub CI／AI PR 與 Pages 展示見 [docs/github-automation.md](docs/github-automation.md)。`node scripts/ci/check.mjs` 執行隔離可攜測試與展示建置；`scripts/ci/build-demo.mjs` 只從原 index.html 和 sites/demo/demo.js 產生 work/pages 三個靜態檔。GitHub 模型 job 不使用本機登入；需 repository Secrets。完整桌面／App 端到端仍依下方專用環境驗證。
+
 在根目錄執行，不需建置套件（本機 `python`／`py -3.12` 若是失效的 Store alias，改用 `py -3`）：
 ```powershell
 node --check outputs/taskboard/app-panel.js
