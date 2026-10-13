@@ -24,6 +24,8 @@ MAX_METADATA_BYTES = 1048576
 MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024
 RECENT_SECONDS = 600
 _RECORD_FILTER = re.compile(rb'"type":\s*"(?:user|assistant|custom-title)"')
+# The App prefixes a session's first prompt with its own note (worktree path, scratch folder) as a leading text block.
+_LEADING_REMINDERS = re.compile(r'\A\s*(?:<system-reminder>.*?</system-reminder>\s*)+', re.S)
 
 
 def desktop_root_candidates():
@@ -69,6 +71,11 @@ def _timestamp(value):
         except ValueError:
             return 0
     return 0
+
+
+def strip_reminders(text):
+    """A user prompt without the App's leading <system-reminder> blocks; the person's own text is kept as typed."""
+    return _LEADING_REMINDERS.sub('', text or '').strip()
 
 
 def _text_blocks(content):
@@ -250,7 +257,7 @@ class ClaudeSessionIndex:
                 message = record.get('message') if isinstance(record.get('message'), dict) else {}
                 content = message.get('content')
                 if kind == 'user' and not record.get('isMeta') and not _has_block(content, 'tool_result'):
-                    text = '\n'.join(t for t in _text_blocks(content) if t).strip()
+                    text = strip_reminders('\n'.join(t for t in _text_blocks(content) if t))
                     if not text:
                         continue
                     turns.append({'id': record.get('uuid') or f'turn-{len(turns)}', 'status': 'unknown', 'at': _timestamp(record.get('timestamp')),

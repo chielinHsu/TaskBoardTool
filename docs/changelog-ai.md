@@ -1,5 +1,11 @@
 # AI 工作紀錄
 
+## 2026-10-13：鏡像卡標題去掉 `<system-reminder>` 並跟隨 Claude App session 標題
+
+- 使用者問為何卡片標題是 `<system-reminder>`，以及在 App 改名後卡片會怎樣。查證：本機 15 個 session 首則訊息第一個文字區塊是 App 的 worktree／暫存資料夾提示；App `local_*.json` 的 `title` 在首回合後才產生（`titleTurn: 0`），建卡時退回首句第一行；改名不同步。使用者同意採標題來源狀態。
+- claude_sessions.py：`strip_reminders`（只去掉開頭完整區塊），用於 `_parse_tail` 使用者回合。server.py：`app_title`、`first_line`、`follow_app_title`、`legacy_title_source`；`mirror_turn` 的 text 去提示、建卡記 `titleSource`、每個事件跟隨；`claude_list` 同步後跟隨；`update` 改標題 → manual；API 1.9.0。tests/test_taskboard_mirror.py 新增 3 項；版本斷言改 1.9.0。文件：ADR-020、architecture（流程圖）、AI_CONTEXT、current-status。
+- VERIFIED：Python 70、py_compile、Node details／drag／projects（需把真實 Python 放 PATH 前面，`python` 為失效 Store alias）、隔離 DB＋真實 session 索引重現三個 session。NOT VERIFIED：真實 App 改名端到端。同日續：正式服務已重啟為 1.9.0（使用者授權，stop.ps1＋start.ps1 -NoBrowser 絕對路徑，主 checkout、同一資料庫）：重啟後已有回合事件的鏡像卡 0fcf4c、97c1ac、37970a、f8578d 為 titleSource=app 且標題等於 App 標題；ad11df 仍是 `<system-reminder>`，等該 session（AlgoParamFineTune）下一個回合。`taskboard-sessions-app.test.mjs` 重跑：版本 1.9.0、模型清單、frame 重新載入、同步卡片與聊天紀錄皆通過，最後「卡片未改變」的 deepEqual 失敗，差異只在 `sessionStatus`（活躍 session 的訊號時間與標籤在測試期間變動，為衍生欄位），屬測試對活躍 session 的既有脆弱性。實際失敗：Python `write_text` 把 server.py 寫成 CRLF（已還原 LF）；`taskboard-sessions-app.test.mjs` 打正式舊服務失敗（版本與活躍訊號時間差），與修改無關。
+
 ## 2026-10-12：回報渲染 Markdown 與 Mermaid 圖（網頁版與 Codex 內嵌版）
 
 - 使用者要求回報能渲染 Markdown 與 Mermaid（流程圖、循序圖、類別圖），兩種頁面都要支援，函式庫由安裝腳本下載、不進 Git。查證 11.6.0（使用者建議）有 XSS／注入公告，經使用者同意改下載 11.17.2（3,572,661 bytes，SHA-256 581ed7d7…390eb8）。

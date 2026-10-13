@@ -67,6 +67,19 @@ sequenceDiagram
 
 擬稿補充（同日）：建卡時簡介以 transcript 最早一句播種（`brief=seed`），start 回應 `wantsBrief`／`briefSource`；mod 以 `$.model.complete`（haiku／low）擬「需求簡介＋驗收條件」送 `event=brief`，只在 `seed`／`drafted` 接受；`update` 改 description → `manual`，之後拒絕。服務重啟的復原跳過最後一筆為 `mirror` 的進行中卡片。
 
+標題補充（2026-10-13，ADR-020）：transcript 使用者回合與 `/api/claude-turns` 的 `text` 先經 `strip_reminders` 去掉開頭的 `<system-reminder>` 區塊。卡片 `titleSource`：建卡時 App 已命名為 `app`，否則首句第一行為 `seed`；`follow_app_title` 在 start／complete 與 `claude_list` 同步時把 `seed`／`app` 改成 App 標題；`update` 改標題 → `manual`。
+
+```mermaid
+flowchart LR
+ T[turn.start 首句] -->|strip_reminders| C{App 已命名?}
+ C -->|是| A[titleSource=app]
+ C -->|否| S[titleSource=seed 首句第一行]
+ S --> F[follow_app_title：回合事件／claude_list 同步]
+ A --> F
+ F -->|App 標題不同| A
+ E[看板 update 改標題] --> M[titleSource=manual 不再跟隨]
+```
+
 ```mermaid
 sequenceDiagram
  participant App as Claude App session（mod）
