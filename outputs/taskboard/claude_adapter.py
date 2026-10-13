@@ -21,7 +21,8 @@ import uuid
 from claude_sessions import ClaudeSessionIndex
 from tool_adapters import BoardError, ToolAdapter, TOOL_LABELS
 
-PERMISSION_MODE = 'acceptEdits'
+# Claude Code auto mode: its safety classifier approves routine tool calls; anything it still asks about reaches the board.
+PERMISSION_MODE = 'auto'
 HANDSHAKE_TIMEOUT = 45
 STOP_GRACE = 15
 
@@ -42,6 +43,16 @@ def resolve_command(path=None):
 
 def creation_flags():
     return subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+
+
+def session_name(task, run):
+    """Name a new session after what it is for: a card's own first run is the card, a new conversation or handoff is its request.
+    index.html sessionTitle() derives the same title for display."""
+    if run.get('kind') in ('new_session', 'handoff'):
+        line = next((part.strip() for part in str(run.get('request') or '').splitlines() if part.strip()), '')
+        if line:
+            return line[:80]
+    return task['title'][:80]
 
 
 class ClaudeProcess:
@@ -252,7 +263,7 @@ class ClaudeAdapter(ToolAdapter):
                 'sessionRoot': str(self.sessions.desktop_root or ''),
                 'embed': False, 'openInApp': False, 'permissionMode': PERMISSION_MODE,
                 'notes': ['以 claude -p 於工作資料夾執行；同一 session 以 --resume 延續。',
-                          '工具權限請求會送到看板核准；檔案編輯依 acceptEdits 自動允許。',
+                          '權限採 Claude Code auto 模式：例行工具呼叫由安全分類器自動核准，仍需確認的才送到看板。',
                           '看板不內嵌於 Claude App；對話可用 claude --resume <session> 在終端機或 Claude App 的 /resume 清單開啟。']}
 
     def require(self):
@@ -349,7 +360,7 @@ class ClaudeAdapter(ToolAdapter):
             args += ['--model', model]
         if effort:
             args += ['--effort', effort]
-        args += ['--resume', session_id] if resumed else ['--session-id', session_id, '--name', task['title'][:80]]
+        args += ['--resume', session_id] if resumed else ['--session-id', session_id, '--name', session_name(task, run)]
         # The run can be stopped as soon as the process exists; the session binds after system/init.
         board.set_turn(task_id, run['id'], extra={'permissionMode': PERMISSION_MODE, 'command': args[len(self.command):]})
         process = ClaudeProcess(self, task_id, run['id'], session_id, args, cwd, board.prompt(task), resumed)

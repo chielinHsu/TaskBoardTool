@@ -111,10 +111,11 @@ class ToolTests(unittest.TestCase):
         self.assertEqual(Path(launch['cwd']).resolve(), Path(run['cwd']).resolve())
         self.assertEqual(args[args.index('--session-id') + 1], run['threadId'])
         self.assertEqual(args[args.index('--model') + 1], 'fake-opus')
-        self.assertEqual(args[args.index('--permission-mode') + 1], 'acceptEdits')
+        self.assertEqual(args[args.index('--permission-mode') + 1], 'auto')
         self.assertIn('--permission-prompt-tool', args)
         self.assertNotIn('--resume', args)
-        self.assertIn('Claude Code 開始執行任務', [e['message'] for e in self.board.store.events()])
+        self.assertEqual(args[args.index('--name') + 1], '工具測試')  # the card's own first session carries the card title
+        self.assertIn('Claude Code 開始執行任務',[e['message'] for e in self.board.store.events()])
         self.assertEqual(self.rpc.threads, 0)
 
     def test_unavailable_model_keeps_choice_and_reports(self):
@@ -162,8 +163,10 @@ class ToolTests(unittest.TestCase):
         self.assertIn('Codex', prompt)
         self.assertIn('Codex 回報', prompt)
         self.assertEqual(server.task_session_keys(handed), {('codex', 'chat-1'), ('claude', run['threadId'])})
-        self.assertNotIn('--resume', self.launches()[-1]['args'])
-        back = self.board.followup(task['id'], {'version': handed['version'], 'text': '回到 Codex 對話', 'threadId': 'chat-1'})
+        handoff_args = self.launches()[-1]['args']
+        self.assertNotIn('--resume', handoff_args)
+        self.assertEqual(handoff_args[handoff_args.index('--name') + 1], '請 Claude 接手修正')  # a new conversation is named after its request
+        back =self.board.followup(task['id'], {'version': handed['version'], 'text': '回到 Codex 對話', 'threadId': 'chat-1'})
         self.assertEqual((back['nextRun']['tool'], back['nextRun']['kind'], back['tool']), ('codex', 'followup', 'codex'))
         self.board.start(task['id'])
         started = self.wait(task['id'], lambda t: bool(t['turnId']))

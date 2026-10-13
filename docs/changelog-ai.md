@@ -1,5 +1,20 @@
 # AI 工作紀錄
 
+## 2026-10-13：卡片詳情的 run 紀錄預設收合、看板開的新 session 以需求命名
+
+- 使用者要求：(1) 卡片詳情的對話內容改成縮排收合，細節從「查看對話」看；(2) 後續 session 標題不要都顯示卡片名稱，從 App 建立的 session 卡片名＝session 標題，在卡片裡開新對話的 session 要顯示自己的標題。
+- index.html：每筆 run 改成 `<details class="run-record">`，摘要列為「序號・類型・狀態｜工具・模型・時間」加需求第一行，預設收合（執行中的 run 預設展開），展開內容縮排；展開狀態以 `openRuns` 保存，詳情重繪不會收回；心智圖跳到某次對話會自動展開。唯讀卡片的「最近回報」同樣收合。新增 `sessionTitle()`：開新對話／跨工具接手開的 session 以該次需求第一行為標題，其餘沿用 App／thread 標題、再退回卡片標題；詳情與心智圖共用。
+- claude_adapter.py：新增 `session_name()`，新 session 的 `--name` 對開新對話／接手改用需求第一行（80 字），首次執行仍用卡片標題，`claude --resume` 清單與看板一致。
+- VERIFIED：py_compile；Python 72 項（新增 `--name` 斷言）；Node details／drag／projects、markdown 11 項；Browser 窗格打開正式卡片 8142b6 實看（唯讀）。上一輪 auto 模式實證：卡片 8142b6 的開新對話 run 由 CLI 回報 `permissionMode: auto`、0 次拒絕、執行 git status 完成。
+- NOT VERIFIED：Codex 看板開的新 thread 在 Codex App 側欄的名稱（未呼叫 thread 命名 API，只改看板顯示）。舊的看板 Claude session 已用卡片標題命名，`claude --resume` 清單不會回溯改名。
+
+## 2026-10-13：Claude 派工權限改為 auto 模式
+
+- 使用者回報：卡片送後續需求後，看板一直跳 PowerShell 核准（`git diff`、`git add`、`git commit`），要求改成自動允許，並指示「派工都定義為 Auto」。
+- 實際失敗：先嘗試加看板設定「Claude 工具自動核准」（對每個 `can_use_tool` 一律回 allow），本機 auto mode 分類器以建立不安全 agent 為由拒絕編輯，已還原，未留下改動。
+- claude_adapter.py：`PERMISSION_MODE` 由 `acceptEdits` 改為 `auto`，派工改用 `--permission-mode auto --permission-prompt-tool stdio`，能力說明同步更新；test_taskboard_tools.py 的參數斷言改為 auto。ADR-021。
+- VERIFIED：py_compile；Python 72 項；真實 CLI 2.1.283 以 `--permission-mode auto` 完成 initialize 握手（未送 prompt、不耗額度）。NOT VERIFIED：真實派工中分類器的核准行為、帳號是否開放 auto 模式；正式服務需重啟才會載入。
+
 ## 2026-10-13：看板自己派的 Claude run 不再被誤鏡像成「Claude App 對話」
 
 - 使用者回報：在卡片上用「開新對話」送後續需求，結果失敗。查證根因是 CLI 未登入（`claude auth status` 顯示 loggedIn=false，OAuth 過期且無法 refresh），與看板無關，請使用者執行 `claude auth login`。同一張卡片多出一筆「Claude App 對話 · 回合發生錯誤」：全域 mod 也會載入到看板啟動的 `claude -p` 子程序，`mirror_turn` 只在看板 run 仍執行中時略過鏡像；該 run 因登入失敗提早結束，約 5 秒後 mod 的 `turn.complete` 才送達，於是被記成一筆新的鏡像 run。

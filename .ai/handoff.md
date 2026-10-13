@@ -1,5 +1,15 @@
 # 交接（2026-10-13）：鏡像卡標題去掉 `<system-reminder>`，並跟隨 Claude App session 標題
 
+## 最新（同日續）：run 紀錄收合、新 session 以需求命名
+- index.html `sessionTitle()`、run 紀錄 `<details>` 預設收合＋縮排、`openRuns` 保存展開狀態；claude_adapter.py `session_name()` 給 `--name`。
+- VERIFIED：Python 72、Node details／drag／projects／markdown、Browser 窗格實看正式卡片 8142b6；auto 模式已由真實派工實證（permissionMode=auto、0 拒絕）。
+- NOT VERIFIED：Codex App 側欄的 thread 名稱；`--name` 改動需重啟正式服務才生效（index.html 已即時生效）。未提交。
+
+## 最新（同日）：Claude 派工權限改 auto（ADR-021）
+- claude_adapter.py `PERMISSION_MODE = 'auto'`，取代 acceptEdits；看板全部自動 allow 的做法被 auto mode 分類器拒絕，未採用。
+- VERIFIED：py_compile、Python 72 項、真實 CLI auto 參數 initialize 握手。NOT VERIFIED：真實派工的分類器行為；正式 47824 服務尚未重啟，未提交。
+- 下一步：重啟服務後用卡片送一次需要 git 指令的後續需求，確認不再跳核准；若 run 的 permissionMode 不是 auto 或 CLI 報 auto 不可用，再評估。
+
 ## 正在做
 使用者問為何鏡像卡標題是 `<system-reminder>`、在 Claude App 改名後卡片會怎樣，同意改為「標題來源狀態」。已實作、驗證並 commit（使用者授權）；正式 47824 服務已重啟為 1.9.0。
 
