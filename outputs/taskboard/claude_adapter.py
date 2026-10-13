@@ -388,7 +388,8 @@ class ClaudeAdapter(ToolAdapter):
         if data is None:
             raise BoardError('找不到這個 Claude Code session 的本機紀錄。', 404)
         return {'id': session_id, 'tool': 'claude', 'title': chat.get('title') or data['title'] or session_id,
-                'turns': data['turns'], 'hasMore': data['hasMore'], 'resumeCommand': f'claude --resume {session_id}'}
+                'turns': data['turns'], 'hasMore': data['hasMore'], 'resumeCommand': f'claude --resume {session_id}',
+                'firstPrompt': self.sessions.first_prompt(session_id, chat.get('cwd', ''))}
 
     def list_sessions(self):
         return self.sessions.list(), False

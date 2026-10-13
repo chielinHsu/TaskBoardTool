@@ -1,5 +1,20 @@
 # AI 工作紀錄
 
+## 2026-10-13：session 只顯示真正的第一次提問，延續次數改為純文字
+
+- 使用者回報：(1)「另有 N 次延續對話，在『查看對話』展開」的可點虛框和下方「查看對話」按鈕重複，只要保留資訊；(2) 第一筆不需要縮排收合，而且顯示的是「下一個問題」，不是這個 session 第一次提問。根因：鏡像卡在 session 換 id 後才建立，`runs[0]` 是較晚的回合；`/api/chat` 只讀尾端 20 回合，長 session 的第一句已不在視窗內。
+- claude_sessions.py：新增 `first_prompt()`，從 transcript 開頭（4 MiB 內）找第一筆非 meta、非 tool_result 的使用者訊息（去掉開頭 `<system-reminder>`），依檔案路徑快取。claude_adapter.py：`read_chat` 回傳 `firstPrompt`。server.py：`Board.first_prompt` 優先採用 `firstPrompt`，鏡像卡簡介播種也因此用真正的第一句。
+- index.html：session 區塊改為純文字「第一次提問」（看板開的 session 用第一筆 run 的需求，並保留類型／狀態／模型／時間；來源與鏡像 session 以 `loadFirstPrompt()` 懶載入 `firstPrompt`，讀不到退回第一筆需求），下接純文字「另有 N 次延續對話（最近：狀態・時間）」與最後一筆錯誤；不再顯示回報、不收合、不縮排。移除 `openRuns` 與 `.run-more` 按鈕。
+- 測試：test_taskboard_tools.py 加 25 回合 transcript，確認尾端視窗沒有第一句但 `firstPrompt` 與 `Board.first_prompt` 讀得到；taskboard-details.test.mjs 改斷言第一次提問、隱藏數，且回報文字不出現在詳情。
+- VERIFIED：py_compile；Python 72 項；Node details／drag／projects；正式服務重啟（PID 36212）後於 Browser 窗格開卡片 056c36，第一次提問顯示 transcript 第一句「從任務清單卡片中加入再次對話需求…」、另有 4 次延續對話，左邊距 0。NOT VERIFIED：Codex 來源 session（無 `firstPrompt`，hasMore 時退回第一筆需求）；「另有 N 次」只計看板保存的 run，鏡像卡建立前的回合不計入。
+
+## 2026-10-13：卡片詳情每個 session 只列第一次需求
+
+- 使用者回報：收合後同一個 session 的每次對話仍逐筆列在最外層，20 次延續就是 20 行，版面仍會拉長；要求 session 只顯示開啟時的那次需求，延續內容從「查看對話」看。
+- index.html：`renderTaskSessions` 每個 session 只渲染 `runs[0]`；其餘以 `.run-more` 按鈕顯示「另有 N 次延續對話（最近：狀態・時間）」，點擊 `openChat()`。`focusMapTarget` 在心智圖點到延續 run（詳情裡不存在）時改開對話。run 結果仍保存在資料庫，下一次開新對話帶的最近回報不受影響。
+- tests/taskboard-details.test.mjs：兩處 run 筆數斷言改為「每個 session 一筆＋.run-more 隱藏數」（2＋1、3＋2）。
+- VERIFIED：inline script 語法；Node details／drag／projects 通過；Browser 窗格開正式卡片 056c36（3 次 run → 1 筆＋「另有 2 次」），點擊開出 session 6a7af013 的對話後關閉，未改資料。NOT VERIFIED：Codex App 內嵌畫面。
+
 ## 2026-10-13：卡片詳情的 run 紀錄預設收合、看板開的新 session 以需求命名
 
 - 使用者要求：(1) 卡片詳情的對話內容改成縮排收合，細節從「查看對話」看；(2) 後續 session 標題不要都顯示卡片名稱，從 App 建立的 session 卡片名＝session 標題，在卡片裡開新對話的 session 要顯示自己的標題。

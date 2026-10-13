@@ -1022,11 +1022,14 @@ class Board:
         return {'mirrored': True, 'created': False, 'brief': 'drafted', 'task': self.store.put(task)}
 
     def first_prompt(self, tool, session_id):
-        """The earliest readable user prompt in the session's transcript window (what the chat dialog shows); '' when none."""
+        """The session's first user prompt: the transcript head when the tool reads it (Claude's firstPrompt), else the
+        earliest prompt in the chat window; '' when none."""
         try:
             chat = self.read_chat(session_id, tool) or {}
         except (BoardError, OSError, ValueError, KeyError, TypeError):
             return ''
+        if chat.get('firstPrompt'):
+            return chat['firstPrompt']
         for turn in chat.get('turns') or []:
             for item in turn.get('items') or []:
                 if item.get('type') == 'userMessage':

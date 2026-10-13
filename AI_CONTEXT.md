@@ -73,7 +73,7 @@ node scripts/ai/bench-model-routing.mjs
 - iframe 為 opaque origin；來源 frame、parent、capability 驗證保留，API token 留在 helper。
 - 一次執行一個任務，完成後待人工驗收；測試不改真實卡片或派工設定。
 - 任務以 runs 保存每次需求／threadId／turnId／cwd／結果／時間，nextRun 保存明確排入待辦的後續需求。儲存／排隊不建聊天，開始執行才 thread/start 或明確 thread/resume；來源與全部歷史 session 去重。
-- 詳情主區為需求簡介、右側為屬性、下方按 session 分組並保存逐次回報；每筆 run 為預設收合的 `details`（執行中預設展開，展開狀態跨重繪保留）。session 標題 `sessionTitle()`：開新對話／接手開的 session 用該次需求第一行（Claude `--name` 同步，`claude_adapter.session_name`），其餘用 App／thread 標題再退回卡片標題。唯讀追蹤卡片按需讀最近可讀需求與回報，標參考，不寫入 DB；建立派工卡片後才能送後續需求。
+- 詳情主區為需求簡介、右側為屬性、下方按 session 分組並保存逐次回報；每個 session 只以純文字顯示「第一次提問」（看板開的 session 用其第一筆 run 的需求；來源／鏡像 session 用 transcript 開頭第一句：`ClaudeSessionIndex.first_prompt` 讀檔頭 4 MiB 內、依檔案快取，經 `/api/chat` 的 `firstPrompt` 回傳，前端 `firstPrompts` 懶載入），下接一行「另有 N 次延續對話」純文字與最後一筆錯誤；回報與延續內容一律看「查看對話」，心智圖點延續 run 直接開對話。`Board.first_prompt` 也優先用 `firstPrompt`。session 標題 `sessionTitle()`：開新對話／接手開的 session 用該次需求第一行（Claude `--name` 同步，`claude_adapter.session_name`），其餘用 App／thread 標題再退回卡片標題。唯讀追蹤卡片按需讀最近可讀需求與回報，標參考，不寫入 DB；建立派工卡片後才能送後續需求。
 - 屬性增加不可編輯的創建日期、model 與 labels；模型選單透過獨立 `/api/models` 讀取真實 `model/list`，60 秒記憶體快取，不阻塞 state。所選模型傳入 thread/start、thread/resume、turn/start，run 保存選擇；真實模型派工未驗證。
 - 相關議題使用 task_relations 儲存一對排序 ID；API 雙向投影 relatedIds，正常 task JSON 寫入不複製關聯。新增／移除／刪除同步清除並更新對端 version，避免舊草稿覆蓋關聯；export schemaVersion=3，API 1.3.0。無截止日期／阻塞關係／工作流欄位；Git 分支／worktree 綁定尚未實作。
 - 後續對話可延續已連結 session 或開新對話；新對話帶原需求及最近三次回報（上限 30000 字）。外部活躍訊號阻擋續跑，但不能保證其他 App runtime 不同時執行；原生側欄歸屬未做模型派工驗證。

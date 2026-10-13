@@ -22,6 +22,7 @@ import time
 TAIL_BYTES = 262144
 MAX_METADATA_BYTES = 1048576
 MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024
+FIRST_PROMPT_BYTES = 4 * 1024 * 1024
 RECENT_SECONDS = 600
 _RECORD_FILTER = re.compile(rb'"type":\s*"(?:user|assistant|custom-title)"')
 # The App prefixes a session's first prompt with its own note (worktree path, scratch folder) as a leading text block.
@@ -95,6 +96,7 @@ class ClaudeSessionIndex:
         config = os.environ.get('CLAUDE_CONFIG_DIR') or str(Path.home() / '.claude')
         self.projects_root = Path(projects_root or Path(config) / 'projects').resolve()
         self.cache = {}
+        self.first_prompts = {}
 
     @property
     def desktop_available(self):
@@ -232,6 +234,42 @@ class ClaudeSessionIndex:
                     item['phase'] = 'final_answer'
                     break
         return {'title': title, 'turns': turns, 'hasMore': bool(dropped), 'path': str(path)}
+
+    def first_prompt(self, session_id, cwd=''):
+        """The session's very first prompt, read from the head of its transcript: read_turns only keeps a tail window,
+        which in a long session no longer holds it. The head never changes, so a found prompt is cached per file."""
+        path = self.transcript_path(session_id, cwd)
+        if not path:
+            return ''
+        key = str(path)
+        if key in self.first_prompts:
+            return self.first_prompts[key]
+        try:
+            stream = path.open('rb')
+        except OSError:
+            return ''
+        read = 0
+        with stream:
+            for line in stream:
+                read += len(line)
+                if read > FIRST_PROMPT_BYTES:
+                    break
+                if not _RECORD_FILTER.search(line):
+                    continue
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(record, dict) or record.get('isSidechain') or record.get('type') != 'user' or record.get('isMeta'):
+                    continue
+                content = (record.get('message') if isinstance(record.get('message'), dict) else {}).get('content')
+                if _has_block(content, 'tool_result'):
+                    continue
+                text = strip_reminders('\n'.join(t for t in _text_blocks(content) if t))
+                if text:
+                    self.first_prompts[key] = text
+                    return text
+        return ''
 
     @staticmethod
     def _parse_tail(path, offset, limit):

@@ -1,6 +1,11 @@
 # 交接（2026-10-13）：鏡像卡標題去掉 `<system-reminder>`，並跟隨 Claude App session 標題
 
-## 最新（同日續）：run 紀錄收合、新 session 以需求命名
+## 最新（同日續三）：session 只顯示真正的第一次提問
+- claude_sessions.py `first_prompt()` 讀 transcript 開頭並快取；`/api/chat` 回 `firstPrompt`；`Board.first_prompt` 優先採用。index.html session 區塊改為純文字「第一次提問」＋「另有 N 次延續對話」純文字，不顯示回報、不收合縮排；`loadFirstPrompt()` 懶載入。
+- VERIFIED：Python 72、Node details／drag／projects、正式服務已重啟（PID 36212）並在 Browser 窗格看卡片 056c36。未提交（含上一輪「只列第一筆」的修改）。
+- NOT VERIFIED：Codex 來源 session 的第一句（無檔頭讀取，hasMore 時退回第一筆需求）。
+
+## 同日續：run 紀錄收合、新 session 以需求命名（已提交 2284a2e）
 - index.html `sessionTitle()`、run 紀錄 `<details>` 預設收合＋縮排、`openRuns` 保存展開狀態；claude_adapter.py `session_name()` 給 `--name`。
 - VERIFIED：Python 72、Node details／drag／projects／markdown、Browser 窗格實看正式卡片 8142b6；auto 模式已由真實派工實證（permissionMode=auto、0 拒絕）。
 - NOT VERIFIED：Codex App 側欄的 thread 名稱；`--name` 改動需重啟正式服務才生效（index.html 已即時生效）。未提交。

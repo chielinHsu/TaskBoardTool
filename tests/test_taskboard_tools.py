@@ -386,6 +386,14 @@ class ToolTests(unittest.TestCase):
         self.assertEqual(self.index.list(now=1791597960)[0]['sessionStatus']['status'], 'in_progress')
         self.assertEqual(self.index.list(now=1791598960)[0]['sessionStatus']['status'], 'backlog')
         self.assertEqual(self.board.store.all(), [])
+        # The chat window keeps only the latest 20 turns; the session's first prompt still comes from the transcript head.
+        later = [{'type': 'user', 'timestamp': '2026-10-10T03:00:00Z', 'message': {'role': 'user', 'content': [{'type': 'text', 'text': f'第 {i} 句'}]}} for i in range(25)]
+        transcript.write_text(transcript.read_text(encoding='utf-8') + '\n'.join(json.dumps(r) for r in later) + '\n', encoding='utf-8')
+        chat = self.board.read_chat(session, 'claude')
+        self.assertTrue(chat['hasMore'])
+        self.assertNotIn('原始需求', json.dumps(chat['turns'], ensure_ascii=False))
+        self.assertEqual(chat['firstPrompt'], '原始需求')
+        self.assertEqual(self.board.first_prompt('claude', session), '原始需求')
 
 
 if __name__ == '__main__':
