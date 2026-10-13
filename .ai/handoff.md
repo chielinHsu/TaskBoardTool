@@ -54,7 +54,7 @@ outputs/taskboard/server.py、outputs/taskboard/claude_sessions.py、tests/test_
 ## 假設與未驗證事項
 App 改名寫入 `local_*.json` 的 `title`：本機 35 個 session 為 `titleSource: 'user'`，推定是手動改名；本輪未實際改名觀察寫入時機。
 
-## 合併進來：App 開著時重啟服務，嵌入看板卡死（8bfb6c9）
-- 根因：403 後 app-injector 對同一 iframe `Page.setDocumentContent`（document.open 語意保留 JS realm、清 window 監聽），新主程式因 `const TOKEN` 重複宣告不執行，舊程式收不到 RPC 回應。
-- 修正：app-panel.js `createFrame()`／`resetFrame()`；app-injector.mjs 403→`reloadFrame`→換新 iframe 再載入，新 CDP 連線先持有、失敗關閉（舊 helper 洩漏 19～31 條、stop 後不退出）；taskboard-app.test.mjs 入口動畫檢查改輪詢。
-- VERIFIED：worktree helper 接專用 App，App 開著重啟服務後約 35 秒換新 iframe、3 秒內 ready、token 一致、RPC 正常、CDP 連線 2 條；App 測試視窗可見時 4 項 PASS。部署注意：重開 App 不會換 helper，需 stop-app.ps1＋start-app.ps1。主 checkout 部署 VERIFIED（同日 12:15）：對方 session 合併 origin/main 後主 checkout 含修正（三檔與分支相同）；worktree helper 以 app-stop 控制檔停止後自行結束（舊版因外洩連線無法退出）；主 checkout start-app.ps1 啟動 helper（PID 31644，2 條 CDP 連線）；確認無派工後 App 開著重啟服務，12:15:21 重啟→12:15:29 換新 iframe→12:15:33 ready，新主程式執行、token 一致、RPC 約 2 秒；主 checkout `node tests/taskboard-app.test.mjs` 4 項 PASS（視窗可見）。另刪除 worktree 誤啟動留下的 `outputs/taskboard/.data`（使用者同意）。
+## 嵌入看板：服務重啟卡死（8bfb6c9，已部署）與背景重建（本輪）
+- 8bfb6c9：403 後對同一 iframe `Page.setDocumentContent` 保留 JS realm，新主程式因 `const TOKEN` 重複宣告不執行；改 `resetFrame()` 換新 iframe，修 CDP 連線外洩。主 checkout 部署與 App 測試 VERIFIED（12:15）。
+- 本輪根因：視窗在背景時頁面計時器先降為每 60 秒、數分鐘後完全停住（實測），CDP 指令常 10 秒逾時；舊 helper 把逾時當斷線而重連、重建看板（約每 5 分鐘一次）。重新載入延遲（35～128 秒）同源：要等頁面恢復執行，前景約 8～14 秒。
+- 修正：cdp.mjs 逾時錯誤帶 `timeout`；app-injector.mjs 已建立且 WebSocket 仍開的連線逾時只記 `renderer-busy` 不重建；loadFrame 動過 iframe 後失敗必換新 iframe，`resetFrame()` 成功才清旗標。VERIFIED（worktree helper 34604）：Debugger.pause 主頁面 35 秒→`renderer-busy`、0 次重新載入、恢復後同一 frame ready；背景 10 分鐘 0 次重新載入；前景重啟服務 14 秒恢復、token 一致；App 測試 4 項 PASS。部署：stop-app.ps1＋主 checkout start-app.ps1。

@@ -1,5 +1,12 @@
 # 目前狀態
 
+## 2026-10-13：背景中的 Codex 視窗不再反覆重建嵌入看板
+
+- 使用者要求查服務重啟後重新載入延遲（35 秒～2 分鐘）。實測（看板 frame 與主頁面放記憶體計時器）：視窗在背景時主頁面計時器先 2.5 秒，30 秒後降為 20、60、60 秒，約 4 分鐘後完全不再醒來；送進頁面的 CDP 指令常 10 秒逾時。延遲原因：換頁面要等看板頁面輪詢拿到 403，頁面被節流／停住時無法進行，前景時 8～14 秒。屬 Chromium／Electron 背景省電，非看板邏輯。
+- 連帶問題：舊 helper 把 CDP 逾時當斷線，關閉重連並重建 panel 與 iframe，背景中約每 5 分鐘一次（14:25:17、14:30:19、14:34:31），使用者回到視窗時看板與開著的詳情可能已被重建。
+- 修正：cdp.mjs 逾時錯誤加 `timeout`；app-injector.mjs 對已建立、WebSocket 仍開啟的連線，逾時只寫 `renderer-busy` 並等待；loadFrame 一旦 prepare 過 iframe，失敗後必換新 iframe；`resetFrame()` 成功後才清 `reloadFrame`。未做：helper 主動偵測服務恢復換頁（頁面停住時同樣無法完成，效益有限）。
+- VERIFIED（worktree 版 helper 接專用 App、正式服務 1.9.0）：Debugger.pause 主頁面 35 秒，helper 狀態 `renderer-busy`、0 次重新載入、恢復 5 秒內同一 frame ready、CDP 連線維持 2 條；背景 10 分鐘 0 次重新載入；前景時 App 開著重啟服務 14 秒換新 frame、token 一致、RPC 正常；`node tests/taskboard-app.test.mjs` 4 項 PASS。實際失敗：觀察腳本 `uniq -f1` 合併同狀態列，一度誤判狀態檔未更新。NOT VERIFIED：主 checkout 部署（需 commit 後 stop-app.ps1＋start-app.ps1）。
+
 ## 2026-10-13：卡片 Session 心智圖
 
 - 每張卡片頁尾新增「◎ N session · M 對話」按鈕，詳情「對話與執行回報」標題旁也有「◎ Session 心智圖」。開啟後以 SVG 畫出 卡片 → session（Codex／Claude Code 分色，標類別與對話數）→ 每次對話（編號、需求摘要、類型、狀態色點、時間）；點 session 開聊天紀錄，點對話跳到詳情中那次回報並短暫外框標示，點卡片節點開詳情（已開的同卡詳情不重新初始化，未儲存的編輯保留）。

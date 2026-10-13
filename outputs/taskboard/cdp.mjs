@@ -19,7 +19,8 @@ export class Cdp {
     await this.ready;
     const id=this.next++;
     return new Promise((resolve,reject)=>{
-      const timer=setTimeout(()=>{this.pending.delete(id);reject(Error(`${method} timed out`));},10000);
+      // A timeout leaves the socket open (e.g. a hidden, frozen renderer); callers may keep the session.
+      const timer=setTimeout(()=>{this.pending.delete(id);reject(Object.assign(Error(`${method} timed out`),{timeout:true}));},10000);
       this.pending.set(id,{resolve,reject,timer});
       try {this.ws.send(JSON.stringify({id,method,params}));} catch(error){clearTimeout(timer);this.pending.delete(id);reject(error);}
     });

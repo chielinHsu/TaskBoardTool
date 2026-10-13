@@ -24,11 +24,13 @@ async function loadFrame(connection,panel) {
   const token=html.match(/const TOKEN='([^']+)'/)?.[1];
   if(!response.ok || !token || !html.includes('name="taskboard-service" content="caspar-taskboard"')) throw Error('Taskboard service identity mismatch');
   connection.token=token;connection.capability=randomUUID();
+  // From here on the frame may receive this document even if a step times out, so a retry must use a fresh iframe.
+  connection.reloadFrame=true;
   await connection.cdp.evaluate(`window.__casparTaskboard.prepare(${JSON.stringify(connection.capability)})`);
   const initialTheme=JSON.stringify(panel.theme||null).replace(/</g,'\\u003c');
   const prefix=`<head><base href="${config.boardUrl}/"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri ${config.boardUrl}"><script>window.__CASPAR_EMBED_RPC__=${JSON.stringify(connection.capability)};window.__CASPAR_BOARD_THEME__=${initialTheme};</script>`;
   await connection.cdp.send('Page.setDocumentContent',{frameId:frame.id,html:html.replace('<head>',prefix)});
-  connection.loadedFrame=frame.id;
+  connection.loadedFrame=frame.id;connection.reloadFrame=false;
 }
 let stopping=false, shownRequest='', serviceAvailable=false, lastHealthCheck=0;
 function status(value){fs.writeFileSync(statusPath,JSON.stringify({updatedAt:new Date().toISOString(),helperPid:process.pid,...value},null,2));}
@@ -86,7 +88,7 @@ try {
           let panel=await connection.cdp.evaluate('window.__casparTaskboard?.status() || null');
           if(!panel){await connection.cdp.evaluate(source);panel=await connection.cdp.evaluate('window.__casparTaskboard?.status() || null');}
           // The service restarted with a new token: load the board into a fresh iframe, never into the used one (see resetFrame).
-          if(connection.reloadFrame && panel?.frameName){connection.reloadFrame=false;await connection.cdp.evaluate('window.__casparTaskboard.resetFrame()');panel=await connection.cdp.evaluate('window.__casparTaskboard?.status() || null');}
+          if(connection.reloadFrame && panel?.frameName){await connection.cdp.evaluate('window.__casparTaskboard.resetFrame()');connection.reloadFrame=false;panel=await connection.cdp.evaluate('window.__casparTaskboard?.status() || null');}
           if(panel?.frameName) await loadFrame(connection,panel);
           const showRequest=fs.existsSync(showPath)?fs.readFileSync(showPath,'utf8').trim():'';
           if(showRequest && showRequest!==shownRequest && panel?.entryPresent){
@@ -96,7 +98,12 @@ try {
           }
           if(panel?.entryPresent) status({phase:!serviceAvailable?'service-offline':panel.frameLoaded?'ready':'loading-board',serviceAvailable,panel});
           else status({phase:'waiting-for-app-navigation'});
-        } catch(error) {connection?.cdp.close();connections.delete(target.id);status({phase:'reconnecting',message:error.message});}
+        } catch(error) {
+          // A hidden Codex window is throttled and then frozen; its commands time out while the session stays valid.
+          // Rebuilding would replace the board (and any open dialog) every few minutes, so wait for it to resume instead.
+          if(error.timeout && connections.get(target.id)===connection && connection.cdp.ws.readyState===WebSocket.OPEN){status({phase:'renderer-busy',message:error.message});continue;}
+          connection?.cdp.close();connections.delete(target.id);status({phase:'reconnecting',message:error.message});
+        }
       }
       if(!targets.length) status({phase:'waiting-for-renderer'});
     } catch(error) {
