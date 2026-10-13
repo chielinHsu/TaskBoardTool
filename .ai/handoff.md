@@ -11,12 +11,12 @@
 - 設定見 docs/github-automation.md；ADR-022 與架構圖記錄邊界。
 
 ## 驗證
-- VERIFIED：Python 76、Node 30、路由 74；合併 API mock 通過。
+- VERIFIED：Python 77、Node 30、路由 74；合併 API mock 通過。
 - VERIFIED：Chrome 子路徑、CRUD、重新載入、模擬派工、拖曳、對話、心智圖、375px、零 API。
 - 實際失敗：展示建置 root 尾端分隔符比對錯誤，已修正通過建置／瀏覽器驗證。
 - 實際失敗：既有 handoff 65 行超過 60；本輪以新交接取代，歷史保留在 current-status／changelog。
 - NOT VERIFIED：真實 Claude／Codex 模型與自動合併端到端，需要 GitHub Secrets。
-- GitHub CI／Pages／workflow 靜態檢查結果完成時補入。
+- GitHub CI run 38383501615 的三項檢查通過；actionlint 與 Strict 檢查通過；Pages 於合併後發布。
 
 ## 下一步
 驗證合併 API mock、workflow 格式與 AI 結構，建立 PR，跑 GitHub CI 後發布。
