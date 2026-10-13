@@ -11,6 +11,8 @@
 //   node outputs/taskboard/setup-claude-mod.mjs --no-validate    # 略過 claude plugin validate
 //
 // 只改 settings.json 的 env.CLAUDE_CODE_PLUGIN_DIRS 與 CLAUDE_CODE_PLUGIN_DIR_WATCH，其餘鍵值原樣保留；
+// 全域路徑排在 CLAUDE_CODE_PLUGIN_DIRS 第一個：輸入框上方（AbovePrompt）由所有 mod 依序畫，排在前面的 mod
+// 若不呼叫 next（例如 usage-bar 舊版），後面的看板重開列就畫不出來；看板排第一並會把畫面往下交。
 // 副本只覆寫來源有的檔案，保留引擎寫入的 .claude-plugin/types/ 與 tsconfig.json；
 // 寫入前分別備份到 work/claude-settings-backups、work/claude-mod-backups（不進 Git）。
 // 不安裝任何軟體、不登入、不碰官方安裝檔，也不耗模型額度。
@@ -161,12 +163,16 @@ const existingDirs = existingRaw.split(path.delimiter).map((item) => item.trim()
 const wanted = normalise(modTarget);
 const sourceKey = normalise(modSource);
 const alreadyListed = existingDirs.some((item) => normalise(item) === wanted);
+const alreadyFirst = existingDirs.length > 0 && normalise(existingDirs[0]) === wanted;
 const sourceListed = existingDirs.filter((item) => normalise(item) === sourceKey);
 const watchEnabled = env.CLAUDE_CODE_PLUGIN_DIR_WATCH === '1';
 
 let settingsChanged = false;
-if (alreadyListed) {
-  log('CLAUDE_CODE_PLUGIN_DIRS 已包含全域路徑。');
+if (alreadyFirst) {
+  log('CLAUDE_CODE_PLUGIN_DIRS 已包含全域路徑（排第一）。');
+} else if (alreadyListed) {
+  settingsChanged = true;
+  log(`CLAUDE_CODE_PLUGIN_DIRS 的全域路徑不在第一個${checkOnly ? '' : '，將移到最前面'}（其他 mod 不往下交時，看板的重開列畫不出來）。`);
 } else {
   settingsChanged = true;
   log(`CLAUDE_CODE_PLUGIN_DIRS 缺少全域路徑${checkOnly ? '' : '，將加入'}。`);
@@ -183,7 +189,7 @@ if (settingsChanged) changed = true;
 
 if (settingsChanged && !checkOnly) {
   const kept = existingDirs.filter((item) => normalise(item) !== sourceKey && normalise(item) !== wanted);
-  env.CLAUDE_CODE_PLUGIN_DIRS = [...kept, modTarget.replace(/\\/g, '/')].join(path.delimiter);
+  env.CLAUDE_CODE_PLUGIN_DIRS = [modTarget.replace(/\\/g, '/'), ...kept].join(path.delimiter);
   env.CLAUDE_CODE_PLUGIN_DIR_WATCH = '1';
   const next = { ...settings, env };
   if (settingsExisted) {
@@ -197,7 +203,7 @@ if (settingsChanged && !checkOnly) {
   fs.writeFileSync(settingsPath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
   const verify = readJson(settingsPath);
   const verifyDirs = String(verify.env?.CLAUDE_CODE_PLUGIN_DIRS || '').split(path.delimiter);
-  if (!verifyDirs.some((item) => normalise(item) === wanted) || verify.env?.CLAUDE_CODE_PLUGIN_DIR_WATCH !== '1') {
+  if (normalise(verifyDirs[0] || '') !== wanted || verify.env?.CLAUDE_CODE_PLUGIN_DIR_WATCH !== '1') {
     console.error('寫入後核對失敗，請檢查 settings.json 與備份。');
     process.exit(2);
   }

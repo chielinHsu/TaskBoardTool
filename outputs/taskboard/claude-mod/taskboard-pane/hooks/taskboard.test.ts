@@ -212,6 +212,23 @@ test('turns typed in this session are mirrored to the board as the runs of one c
   expect(posted.every(p => p.tool === 'claude' && p.sessionId === posted[0].sessionId)).toBe(true)
 })
 
+test('a CLI the board dispatched relays none of its turns', async ($, on) => {
+  const clock = mock.clock(on)
+  const posted: any[] = []
+  on('http.fetch', async (_$, e) => {
+    if (e.url.endsWith('/api/claude-turns')) posted.push(JSON.parse(e.init?.body || '{}'))
+    return { value: { status: 200, ok: true, headers: {}, text: e.url.endsWith('47824/') ? PAGE : '{}' } }
+  })
+  on('env.get', (_$, e) => ({ value: e.name === 'TASKBOARD_DISPATCHED' ? '1' : undefined }))
+  on('session.id', () => ({ value: 'sess-board' }))
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_$, e) => ({ text: e.answer }))
+  await $.turn.start({ text: '看板派的需求', turnId: 'turn-1' })
+  await $.turn.complete({ turnId: 'turn-1', answer: '', durationMs: 10, isAborted: false, reason: 'error' })
+  await clock.settle()
+  expect(posted).toEqual([])
+})
+
 test('a reopen button with hotkey 9 sits above the prompt only while the pane is closed, beneath other bands', async ($, on) => {
   mock.clock(on)
   on('http.fetch', async () => ({ value: { status: 200, ok: true, headers: {}, text: '{}' } }))

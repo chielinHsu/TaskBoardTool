@@ -1,11 +1,14 @@
 """Multi-tool dispatch: fake Codex RPC + simulated Claude CLI. Isolated DB, no model calls, no real sessions."""
+from http.client import HTTPConnection
 import json
 import os
 from pathlib import Path
 import sys
 import tempfile
+import threading
 import time
 import unittest
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'outputs/taskboard'))
@@ -250,7 +253,20 @@ class ToolTests(unittest.TestCase):
         self.assertEqual(self.board.store.get(task['id'])['status'], 'in_progress')
         with self.assertRaises(server.BoardError):
             self.board.answer(request['id'], {'decision': 'maybe'})
-        self.board.answer(request['id'], {'decision': 'accept'})
+        # Answered the way the pages do: the "claude:<id>" key is percent-encoded in the URL path.
+        http = server.ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
+        http.token, http.board = 'fixture-token', self.board
+        threading.Thread(target=http.serve_forever, daemon=True).start()
+        try:
+            conn = HTTPConnection('127.0.0.1', http.server_port, timeout=5)
+            conn.request('POST', '/api/approvals/' + quote(request['id'], safe=''), body=json.dumps({'decision': 'accept'}),
+                         headers={'X-Board-Token': 'fixture-token', 'Content-Type': 'application/json'})
+            response = conn.getresponse()
+            self.assertEqual((response.status, json.loads(response.read())), (200, {'ok': True}))
+            conn.close()
+        finally:
+            http.shutdown()
+            http.server_close()
         allowed = self.wait(task['id'])
         self.assertEqual(allowed['runs'][-1]['status'], 'completed')
         self.assertEqual(self.board.requests, {})

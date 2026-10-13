@@ -63,6 +63,7 @@ class ClaudeProcess:
     def start(self):
         env = os.environ.copy()
         env.pop('CLAUDECODE', None)  # allow launching from inside another Claude Code session
+        env['TASKBOARD_DISPATCHED'] = '1'  # the taskboard-pane mod loaded by this CLI leaves the board's own turns unmirrored
         self.proc = subprocess.Popen(self.args, cwd=self.cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace',
                                      creationflags=creation_flags())
@@ -266,6 +267,7 @@ class ClaudeAdapter(ToolAdapter):
         probe_dir = self.board.default_workspace
         env = os.environ.copy()
         env.pop('CLAUDECODE', None)
+        env['TASKBOARD_DISPATCHED'] = '1'
         proc = subprocess.Popen(args, cwd=str(probe_dir), env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 text=True, encoding='utf-8', errors='replace', creationflags=creation_flags())
         lines = queue.Queue()

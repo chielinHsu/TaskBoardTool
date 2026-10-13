@@ -253,6 +253,36 @@ class MirrorTests(unittest.TestCase):
         self.assertTrue(other['created'])  # a different session typed in the App is still mirrored
         self.assertEqual(len(self.board.store.all()), 2)
 
+    def test_app_turns_leave_a_mirrored_card_alone_while_the_board_runs_a_session_on_it(self):
+        self.mirror(event='start', turnId='t1', text='鏡像的第一句')
+        card = self.mirror(event='complete', turnId='t1', answer='好')['task']
+        # A follow-up sent from the card in a new session: the board's run is now active on this mirrored card.
+        card['runs'].append({'id': 'r2', 'kind': 'new_session', 'threadId': 'c' * 12, 'turnId': '', 'cwd': '', 'tool': 'claude',
+                             'model': '', 'effort': '', 'request': '幫我 commit', 'result': '', 'error': '', 'status': 'running', 'startedAt': 2})
+        card.update(status='in_progress', workerThreadId='c' * 12)
+        self.board.store.put(card)
+        self.board.active_id = card['id']
+        self.assertEqual(self.mirror(event='start', turnId='t2', text='App 裡的下一句')['reason'], 'board-run')
+        self.assertEqual(self.mirror(event='complete', turnId='t2', answer='x')['reason'], 'board-run')
+        card = self.board.store.get(card['id'])
+        self.assertEqual(([r['kind'] for r in card['runs']], card['workerThreadId']), (['mirror', 'new_session'], 'c' * 12))
+        self.board.active_id = None  # once the board's run ends, the App's turns are mirrored again
+        self.assertTrue(self.mirror(event='start', turnId='t3', text='再下一句')['mirrored'])
+
+    def test_a_board_turn_end_arriving_after_its_run_finished_adds_no_mirrored_run(self):
+        card = self.board.create({'title': '看板派工', 'description': '需求', 'tool': 'claude'})
+        card['runs'].append({'id': 'r1', 'kind': 'followup', 'threadId': SESSION, 'turnId': '', 'cwd': '', 'tool': 'claude', 'model': '',
+                             'effort': '', 'request': '後續', 'result': '', 'error': 'OAuth 過期', 'status': 'failed',
+                             'startedAt': 1, 'finishedAt': 2})
+        card.update(status='backlog', workerThreadId=SESSION)
+        self.board.store.put(card)
+        late = self.mirror(event='complete', turnId='t1', answer='', reason='error')
+        self.assertEqual(late['reason'], 'board-run')
+        card = self.board.store.get(card['id'])
+        self.assertEqual(([r['kind'] for r in card['runs']], card['status']), (['followup'], 'backlog'))
+        resumed = self.mirror(event='start', turnId='t2', text='在終端機 claude --resume 接著做')['task']  # a real resume is still mirrored
+        self.assertEqual([r['kind'] for r in resumed['runs']], ['followup', 'mirror'])
+
     def test_bad_input_and_orphan_turn_ends_create_nothing(self):
         self.assertEqual(self.mirror(event='complete', turnId='t0', answer='孤立回合')['reason'], 'no-card')
         self.assertEqual(self.mirror(event='start', turnId='t0', text='   ')['reason'], 'no-card')

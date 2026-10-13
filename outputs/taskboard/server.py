@@ -20,7 +20,7 @@ import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 from session_sync import SessionSignals, session_card
 from tool_adapters import BoardError, CodexAdapter, TOOLS, TOOL_LABELS, task_tool, run_tool, session_tool, task_session_keys
 from claude_adapter import ClaudeAdapter, resolve_command
@@ -911,6 +911,10 @@ class Board:
                 if run_tool(active, run) == tool and run.get('threadId', '') in ('', session_id):
                     return {'mirrored': False, 'reason': 'board-run'}
             task = next((t for t in self.store.all() if (tool, session_id) in task_session_keys(t)), None)
+            if task and active and task['id'] == active['id']:
+                # The board is running its own session on this mirrored card (a follow-up sent from the card):
+                # the App's turns leave it alone until that run ends, or its runs and session binding would be overwritten.
+                return {'mirrored': False, 'reason': 'board-run'}
             chat = self.chat(tool, session_id) or {}
             model = clean_text(str(body.get('model') or chat.get('model') or ''), '模型', 200)
             cwd = clean_text(str(body.get('cwd') or chat.get('cwd') or ''), '工作資料夾', 2000)
@@ -959,6 +963,10 @@ class Board:
                     task['comments'].append({'author': '系統', 'at': stamp(), 'text': '已完成的卡片收到 Claude App 對話的新需求，重新回到進行中。'})
             else:
                 run = last if last and last.get('kind') == 'mirror' and (last['status'] == 'running' or last.get('turnId') == turn_id) else None
+                if run is None and last and last.get('kind') != 'mirror' and last.get('threadId') == session_id:
+                    # The end of a turn the board dispatched, relayed by a mod copy that predates TASKBOARD_DISPATCHED and
+                    # arriving after the adapter already finished that run: its start was refused as board-run, so drop it too.
+                    return {'mirrored': False, 'reason': 'board-run'}
                 if run is None:
                     runs.append({'id': uuid.uuid4().hex[:12], 'kind': 'mirror', 'threadId': session_id, 'turnId': turn_id,
                                  'cwd': task['cwd'] or cwd, 'tool': tool, 'model': model, 'effort': '', 'fromTool': '',
@@ -1416,7 +1424,8 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) == 6 and method == 'POST' and parts[4] == 'followup' and parts[5] == 'cancel':
                 return self.reply(self.board.cancel_followup(task_id, body))
         if len(parts) == 4 and parts[2] == 'approvals' and method == 'POST':
-            return self.reply(self.board.answer(parts[3], body))
+            # Claude request ids carry a colon ("claude:<uuid>") that the pages send percent-encoded.
+            return self.reply(self.board.answer(unquote(parts[3]), body))
         raise BoardError('找不到此操作。', 404)
 
     def handle_method(self, method):

@@ -173,10 +173,13 @@ async function syncGroups($: Engine): Promise<void> {
 }
 
 // Every turn of this session is mirrored to the board as a run of one card (the session's first prompt
-// creates it, in 進行中; the turn's end moves it to 待審核). The board tells a session it dispatched itself
-// apart from one typed in the App; relaying never blocks or alters the turn.
+// creates it, in 進行中; the turn's end moves it to 待審核). A CLI the board launched itself carries
+// TASKBOARD_DISPATCHED and relays nothing: its adapter already records the run, and a turn end that
+// arrived after that run finished would otherwise come back as a second, mirrored run. Relaying never
+// blocks or alters the turn.
 async function mirror($: Engine, payload: Record<string, unknown>): Promise<void> {
   try {
+    if (await $.env.get('TASKBOARD_DISPATCHED').catch(() => undefined) === '1') return
     const sessionId = await $.session.id()
     const cwd = await $.session.cwd().catch(() => '')
     const model = await $.session.model().catch(() => '')
