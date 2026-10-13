@@ -109,6 +109,63 @@ class MirrorTests(unittest.TestCase):
         self.assertEqual(('brief' in third['task'], third['wantsBrief']), (False, False))
         self.assertEqual(self.mirror(event='brief', description='x')['reason'], 'brief-manual')
 
+    def chat_titled(self, title):
+        self.board.claude_chats = {SESSION: {'id': SESSION, 'tool': 'claude', 'title': title, 'cwd': '', 'updatedAt': 1, 'createdAt': 1,
+                                             'model': '', 'desktopId': 'local_x', 'origin': 'desktop', 'project': ''}}
+
+    def test_the_app_reminder_never_titles_a_card_and_the_title_follows_the_app_until_edited_on_the_board(self):
+        reminder = '<system-reminder>\nYou are operating in a git worktree.\nWorktree path: D:\\x\\.claude\\worktrees\\calm-a1\n</system-reminder>\n'
+        task = self.mirror(event='start', turnId='t1', text=reminder + '修好看板標題\n第二行')['task']
+        self.assertEqual((task['title'], task['titleSource'], task['description'], task['runs'][-1]['request']),
+                         ('修好看板標題', 'seed', '修好看板標題\n第二行', '修好看板標題\n第二行'))
+        self.chat_titled(SESSION)  # the App has not named the session yet
+        self.assertEqual(self.mirror(event='complete', turnId='t1', answer='好')['task']['title'], '修好看板標題')
+        self.chat_titled('App 自動標題')  # named after the first turn
+        task = self.mirror(event='start', turnId='t2', text='第二句')['task']
+        self.assertEqual((task['title'], task['titleSource']), ('App 自動標題', 'app'))
+        # a rename in the App reaches the card on the next session sync, without a new turn
+        renamed = dict(self.board.claude_chats[SESSION], title='我在 App 改的名字')
+        self.board.adapters['claude'].list_sessions = lambda: ([renamed], False)
+        self.board.claude_list()
+        live = self.board.store.get(task['id'])
+        self.assertEqual((live['title'], live['titleSource']), ('我在 App 改的名字', 'app'))
+        # a title edited on the board is the card's own from then on
+        edited = self.board.update(live['id'], {'version': live['version'], 'title': '看板上的標題', 'status': 'in_progress'})
+        self.assertEqual(edited['titleSource'], 'manual')
+        self.board.adapters['claude'].list_sessions = lambda: ([dict(renamed, title='又改一次')], False)
+        self.board.claude_list()
+        self.assertEqual(self.board.store.get(task['id'])['title'], '看板上的標題')
+        self.assertEqual(self.mirror(event='complete', turnId='t2', answer='好')['task']['title'], '看板上的標題')
+
+    def test_a_card_titled_before_title_sources_existed_follows_the_app_only_while_untouched(self):
+        self.board.read_chat = lambda thread_id, tool='codex': {'turns': [
+            {'id': 't0', 'items': [{'type': 'userMessage', 'content': [{'type': 'text', 'text': '最初的需求'}]}]}]}
+        for old_title, expected in (('<system-reminder>', 'App 標題'), ('最初的需求', 'App 標題'), ('自己取的名字', '自己取的名字')):
+            task = self.mirror(event='start', turnId='t1', text='最初的需求')['task']
+            self.mirror(event='complete', turnId='t1', answer='好')
+            legacy = self.board.store.get(task['id'])
+            legacy['title'] = old_title
+            del legacy['titleSource']
+            self.board.store.put(legacy)
+            self.chat_titled('App 標題')
+            again = self.mirror(event='start', turnId='t2', text='下一句')['task']
+            self.assertEqual(again['title'], expected, old_title)
+            self.board.claude_chats = {}
+            self.board.store.delete(task['id'])
+
+    def test_transcript_prompts_drop_only_the_apps_leading_reminder(self):
+        import json
+        from claude_sessions import ClaudeSessionIndex
+        path = self.root / 'session.jsonl'
+        records = [{'type': 'user', 'uuid': 'u1', 'message': {'content': [
+                       {'type': 'text', 'text': '<system-reminder>\nThe user started this session without choosing a project folder.\n</system-reminder>'},
+                       {'type': 'text', 'text': '真正的需求'}]}},
+                   {'type': 'user', 'uuid': 'u2', 'message': {'content': '解釋 <system-reminder> 這個標記'}},
+                   {'type': 'user', 'uuid': 'u3', 'message': {'content': '<system-reminder>\n只有提醒\n</system-reminder>'}}]
+        path.write_text('\n'.join(json.dumps(r, ensure_ascii=False) for r in records) + '\n', encoding='utf-8')
+        turns, _, _ = ClaudeSessionIndex._parse_tail(path, 0, 10)
+        self.assertEqual([t['items'][0]['content'][0]['text'] for t in turns], ['真正的需求', '解釋 <system-reminder> 這個標記'])
+
     def test_a_service_restart_leaves_a_mirrored_turn_running(self):
         task = self.mirror(event='start', turnId='turn-1', text='還在 App 裡跑')['task']
         self.board.close()

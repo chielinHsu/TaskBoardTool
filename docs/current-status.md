@@ -8,6 +8,12 @@
 - VERIFIED（worktree 版 helper 接專用 App、正式服務）：App 開著重啟服務，約 35 秒後換上新 iframe、3 秒內 ready，新主程式執行、frame token＝服務 token、RPC 正常；修正前同操作卡死需重開 App。新 helper 維持 2 條 CDP 連線。`node --check` 通過。App 測試在視窗可見時 4 項 PASS 一次；視窗最小化／被遮住（visibilityState hidden）時入口動畫不跑，第二項失敗，屬環境。另一偶發：重新載入前後卡片總數因 session 同步增減而不同（即時資料競態，未修）。
 - NOT VERIFIED：2 分鐘才重新載入的延遲成因（推測隱藏 iframe 計時器節流）；正式部署需合併後以 stop-app.ps1 + start-app.ps1（或桌面捷徑）重啟 helper，重開 App 不會換 helper。
 
+## 2026-10-13：鏡像卡標題不再是 `<system-reminder>`，並跟隨 Claude App 的 session 標題
+
+- 使用者發現幾張鏡像卡標題顯示 `<system-reminder>`。原因：worktree／未選資料夾的 session，App 在首句前插入 `<system-reminder>` 區塊；App 的 session 標題在首回合結束後才產生，建卡當下只能用首句第一行。
+- 修正：transcript 與 mod 送來的需求去掉開頭的 `<system-reminder>` 區塊；卡片新增 `titleSource`（seed／app→manual），標題在每個回合事件與每次 Claude session 同步跟隨 App 標題（含在 App 改名），看板上改過標題後不再覆寫；舊卡在該 session 下一個回合判定。API 1.9.0（ADR-020）。
+- VERIFIED：Python 70 測試（鏡像 14 項，新增 3 項）、`py -3 -m py_compile`、Node details／drag／projects；以隔離 DB 讀真實 Claude session 索引（唯讀）重現 3 個 session：首回合標題為真實需求第一行，同步後變成 App 標題。同日續：正式服務已重啟為 1.9.0（使用者授權，stop.ps1＋start.ps1 -NoBrowser 絕對路徑，主 checkout、同一資料庫）：重啟後已有回合事件的鏡像卡 0fcf4c、97c1ac、37970a、f8578d 為 titleSource=app 且標題等於 App 標題；ad11df 仍是 `<system-reminder>`，等該 session（AlgoParamFineTune）下一個回合。`taskboard-sessions-app.test.mjs` 重跑：版本 1.9.0、模型清單、frame 重新載入、同步卡片與聊天紀錄皆通過，最後「卡片未改變」的 deepEqual 失敗，差異只在 `sessionStatus`（活躍 session 的訊號時間與標籤在測試期間變動，為衍生欄位），屬測試對活躍 session 的既有脆弱性。 NOT VERIFIED：真實 App 改名的端到端。
+
 ## 2026-10-12：回報渲染 Markdown 與 Mermaid 圖
 
 - 看板的執行回報、session 最近回報、聊天紀錄（進度與回報；你的訊息維持純文字）、狀態列表完成訊息改以 Markdown 顯示；```mermaid 區塊畫成圖，配色跟 Appearance token 與明暗主題，切換時即時重新上色；圖無法解析或函式庫未安裝時顯示原始碼與原因。

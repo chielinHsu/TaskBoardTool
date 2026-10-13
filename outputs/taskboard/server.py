@@ -24,6 +24,7 @@ from urllib.parse import urlparse, parse_qs
 from session_sync import SessionSignals, session_card
 from tool_adapters import BoardError, CodexAdapter, TOOLS, TOOL_LABELS, task_tool, run_tool, session_tool, task_session_keys
 from claude_adapter import ClaudeAdapter, resolve_command
+from claude_sessions import strip_reminders
 from folder_picker import FolderPicker
 
 ROOT = Path(__file__).resolve().parent
@@ -104,7 +105,7 @@ STATUSES = ('backlog', 'todo', 'in_progress', 'in_review', 'done')
 STATUS_LABELS = {'backlog': '列管', 'todo': '待辦', 'in_progress': '進行中', 'in_review': '待審核', 'done': '已完成'}
 PRIORITIES = ('low', 'medium', 'high', 'urgent')
 LOG = logging.getLogger('taskboard')
-API_VERSION = '1.8.0'
+API_VERSION = '1.9.0'
 EXPORT_SCHEMA = 5
 EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
 # The five Claude roles of MODEL_ROUTING.md as (model alias, effort); Codex keeps its own default model.
@@ -397,6 +398,16 @@ def clean_text(value, label, limit=20000):
     return value.strip()
 
 
+def app_title(chat, session_id):
+    """The Claude App's own session title; '' while the App has not named it (the index then shows the session id)."""
+    title = str((chat or {}).get('title') or '').strip()
+    return title[:1000] if title and title != session_id else ''
+
+
+def first_line(text):
+    return next((line.strip() for line in (text or '').splitlines() if line.strip()), (text or '').strip())
+
+
 def clean_tool(value):
     if value not in TOOLS:
         raise BoardError('執行工具不正確，請選擇 Codex 或 Claude Code。')
@@ -638,12 +649,14 @@ class Board:
                 raise BoardError('執行中的任務請先停止；留言可以使用下方的新增留言。', 409)
             if task['status'] == 'in_progress' and body.get('status', 'in_progress') != 'in_progress':
                 raise BoardError('這張卡片正由 Claude App 的對話執行中，等回合結束後再移動。', 409)
-            previous_description = task['description']
+            previous_description, previous_title = task['description'], task['title']
             for key in ('title', 'description', 'project', 'cwd', 'resultUrl'):
                 if key in body:
                     task[key] = clean_text(body[key], key, 1000 if key == 'title' else 20000)
             if task.get('brief') and task['description'] != previous_description:
                 task['brief'] = 'manual'  # a hand-edited brief is the card's own; the session's drafts never replace it again
+            if 'titleSource' in task and task['title'] != previous_title:
+                task['titleSource'] = 'manual'  # likewise a title edited on the board no longer follows the App's session title
             if not task['title']:
                 raise BoardError('請填寫任務標題。')
             if 'status' in body and body['status'] != task['status']:
@@ -827,6 +840,9 @@ class Board:
                 chat['project'] = groups.get(chat.get('desktopId', ''), '')
             with self.lock:
                 self.claude_chats = {c['id']: c for c in chats}
+                for task in self.store.all():  # an App rename (or its late automatic title) reaches the mirrored card
+                    if task.get('sourceTool') == 'claude' and self.follow_app_title(task, self.claude_chats.get(task.get('sourceId'))):
+                        self.store.put(task)
                 self.claude_sync.update(updatedAt=stamp(), error='', hasMore=has_more)
             return {'chats': chats, 'hasMore': has_more}
         except Exception as exc:
@@ -887,7 +903,7 @@ class Board:
         if not re.fullmatch(r'[A-Za-z0-9-]{1,64}', session_id):
             raise BoardError('session ID 不正確。')
         turn_id = clean_text(str(body.get('turnId') or ''), 'turn ID', 200)
-        text = clean_text(str(body.get('text') or ''), '需求')
+        text = strip_reminders(clean_text(str(body.get('text') or ''), '需求'))
         with self.lock:
             active = self.active_task()
             if active:
@@ -908,12 +924,15 @@ class Board:
                 # readable turn when the card is only created later — and the mod drafts it once from that seed;
                 # later prompts of the session never rewrite it, only the person editing the card does.
                 first_text = self.first_prompt(tool, session_id) or text
-                chat_title = chat.get('title', '') if chat.get('title', '') != session_id else ''
-                title = chat_title or next((line.strip() for line in first_text.splitlines() if line.strip()), first_text)[:120]
+                # The App names a session only after its first turn, so the card usually starts from the prompt's first
+                # line (seed) and takes the App's title once it appears; see follow_app_title.
+                chat_title = app_title(chat, session_id)
+                title = chat_title or first_line(first_text)[:120]
                 task = self.create({'title': title, 'description': first_text, 'priority': 'high', 'tool': tool,
                                     'cwd': cwd if cwd and Path(cwd).is_absolute() and Path(cwd).is_dir() else '',
                                     'project': chat.get('project') or (Path(cwd).name if cwd else '個人任務')})
                 task['sourceId'], task['sourceTool'], task['brief'] = session_id, tool, 'seed'
+                task['titleSource'] = 'app' if chat_title else 'seed'
                 task['comments'].append({'author': '系統', 'at': stamp(), 'text': '由 Claude App 的對話自動建立。看板鏡像這個 session 的回合：'
                                          '送出需求時進入進行中，回合結束後進入待審核；看板不會派工、延續或停止它。'})
                 created = True
@@ -922,6 +941,9 @@ class Board:
                 # Seeded by the earlier mirror code from the prompt that created it and never edited since: still draftable,
                 # and re-seeded from the session's real first prompt when the transcript still shows it.
                 task['description'], task['brief'] = self.first_prompt(tool, session_id) or task['description'], 'seed'
+            if 'titleSource' not in task and runs and runs[0].get('kind') == 'mirror':
+                task['titleSource'] = self.legacy_title_source(task, tool, session_id, chat)
+            self.follow_app_title(task, chat)
             last = runs[-1] if runs else None
             previous_status = task['status']
             if event == 'start':
@@ -959,6 +981,26 @@ class Board:
             saved = self.store.put(task)
             seeded = saved.get('brief') == 'seed'
             return {'mirrored': True, 'created': created, 'task': saved, 'wantsBrief': seeded, 'briefSource': saved['description'] if seeded else ''}
+
+    def follow_app_title(self, task, chat):
+        """A mirrored card's title tracks the App's session title (its late automatic one, or a rename in the App)
+        until someone edits the title on the board: titleSource seed／app follow, manual never does. True when changed."""
+        if task.get('titleSource') not in ('seed', 'app'):
+            return False
+        title = app_title(chat, task.get('sourceId', ''))
+        if not title or title == task['title']:
+            return False
+        task['title'], task['titleSource'] = title, 'app'
+        return True
+
+    def legacy_title_source(self, task, tool, session_id, chat):
+        """Cards mirrored before titleSource existed follow the App only while their title is still the automatic one."""
+        title = task['title']
+        if title == app_title(chat, session_id):
+            return 'app'
+        if title.startswith('<system-reminder>') or title == first_line(self.first_prompt(tool, session_id))[:120]:
+            return 'seed'
+        return 'manual'
 
     def apply_brief(self, task, body):
         """A 需求簡介／驗收條件 draft from the mod (event=brief). Only an automatic brief (seed／drafted) is replaced;
