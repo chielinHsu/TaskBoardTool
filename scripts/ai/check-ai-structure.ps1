@@ -164,7 +164,8 @@ if (Test-Path -LiteralPath (P '.gitignore')) {
 Write-Host '[7] 技能鏡像'
 $syncScript = P 'scripts/ai/sync-skills.ps1'
 if (Test-Path -LiteralPath $syncScript) {
-  $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $syncScript -Check -Root $Root 2>&1
+  $taskboardShell = if (Get-Command powershell -ErrorAction SilentlyContinue) { 'powershell' } else { 'pwsh' }
+  $out = & $taskboardShell -NoProfile -ExecutionPolicy Bypass -File $syncScript -Check -Root $Root 2>&1
   if ($LASTEXITCODE -ne 0) { Fail 'sync-skills.ps1 -Check 失敗：'; $out | ForEach-Object { Write-Host "      $_" } }
   else { Ok 'sync-skills.ps1 -Check 一致' }
 }

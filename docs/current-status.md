@@ -1,5 +1,12 @@
 # 目前狀態
 
+## 2026-10-13：GitHub AI PR／CI 與 Pages 展示
+
+- 新增跨平台 CI、三種工具路由的 AI Task／AI Review、最新 SHA／CI／檔案範圍合併 gate、明確 dispatch Pages；選定 Claude 實作＋Codex 審查。
+- Pages 沿用看板 HTML，獨立範例資料層與 localStorage；不連模型、本機服務或私人資料。
+- VERIFIED：Python 76、Node 30、路由 74／74；Chrome 子路徑、CRUD、保存、模擬派工、拖曳、對話、心智圖、375px、零 API 請求。NOT VERIFIED：真實模型／自動合併端到端，需 Secrets；GitHub 結果完成時補入。
+- 既有 handoff 65 行超過 60，改為本輪新交接；檢查腳本加入 Linux pwsh fallback。設定見 docs/github-automation.md，決策 ADR-022。
+
 ## 2026-10-13：操作手冊 docs/user-guide.md 與 45 秒簡報影片
 
 - 新增分章節操作手冊 `docs/user-guide.md`，根目錄 README 與看板 README 開頭加連結；`docs/images/` 放打碼標註截圖與影片畫面。影片原始碼與成品在 `work/promo-video/`（已納入 Git，中間產物排除），重新產生方式見該資料夾 README。

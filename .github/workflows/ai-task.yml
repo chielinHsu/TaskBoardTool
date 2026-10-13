@@ -1,0 +1,135 @@
+name: AI Task
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 要實作的 Issue 編號
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: ai-task-${{ github.event.issue.number || inputs.issue_number }}
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (!github.event.issue.pull_request &&
+      (github.event.comment.body == '/ai' || github.event.comment.body == '/claude' || github.event.comment.body == '/codex'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      mode: ${{ steps.prepare.outputs.mode }}
+      engine: ${{ steps.prepare.outputs.engine }}
+      issue: ${{ steps.prepare.outputs.issue }}
+      base: ${{ steps.prepare.outputs.base }}
+      prompt: ${{ steps.prepare.outputs.prompt }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        id: prepare
+        env:
+          AI_MODE: ${{ vars.AI_MODE }}
+        with:
+          script: await require('./scripts/ci/github-automation.cjs').prepareTask({github, context, core});
+  claude:
+    needs: prepare
+    if: needs.prepare.outputs.engine == 'claude'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      result: ${{ steps.agent.outputs.structured_output }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.prepare.outputs.base }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Check Claude credential and load output schema
+        id: schema
+        env:
+          API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          test -n "$API_KEY$OAUTH_TOKEN" || { echo '請設定 Claude 的 Actions secret'; exit 1; }
+          printf 'json=%s\n' "$(cat .github/ai/change.schema.json)" >> "$GITHUB_OUTPUT"
+      - uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1
+        id: agent
+        with:
+          github_token: ${{ github.token }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: ${{ needs.prepare.outputs.prompt }}
+          claude_args: >-
+            --max-turns 30 --allowedTools "Read,Glob,Grep,Edit,Write,Bash(node *),Bash(python *),Bash(git diff *)"
+            --json-schema '${{ steps.schema.outputs.json }}'
+  codex:
+    needs: prepare
+    if: needs.prepare.outputs.engine == 'codex'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      result: ${{ steps.agent.outputs.final-message }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.prepare.outputs.base }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Check OpenAI credential
+        env:
+          API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: test -n "$API_KEY" || { echo '請設定 OPENAI_API_KEY Actions secret'; exit 1; }
+      - uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1
+        id: agent
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt: ${{ needs.prepare.outputs.prompt }}
+          sandbox: workspace-write
+          safety-strategy: drop-sudo
+          codex-args: '["--ephemeral", "--output-schema", ".github/ai/change.schema.json"]'
+  publish:
+    needs: [prepare, claude, codex]
+    if: >-
+      always() && needs.prepare.result == 'success' &&
+      (needs.claude.result == 'success' || needs.codex.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          AI_RESULT: ${{ needs.claude.outputs.result || needs.codex.outputs.result }}
+          BASE_SHA: ${{ needs.prepare.outputs.base }}
+          TASK_MODE: ${{ needs.prepare.outputs.mode }}
+          ISSUE_NUMBER: ${{ needs.prepare.outputs.issue }}
+        with:
+          script: await require('./scripts/ci/github-automation.cjs').publishTask({github, context, core});
