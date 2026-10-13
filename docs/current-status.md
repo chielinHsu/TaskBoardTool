@@ -4,7 +4,8 @@
 
 - 新增跨平台 CI、三種工具路由的 AI Task／AI Review、最新 SHA／CI／檔案範圍合併 gate、明確 dispatch Pages；選定 Claude 實作＋Codex 審查。
 - Pages 沿用看板 HTML，獨立範例資料層與 localStorage；不連模型、本機服務或私人資料。
-- VERIFIED：Python 76、Node 30、路由 74／74；Chrome 子路徑、CRUD、保存、模擬派工、拖曳、對話、心智圖、375px、零 API 請求。NOT VERIFIED：真實模型／自動合併端到端，需 Secrets；GitHub 結果完成時補入。
+- VERIFIED：Python 77、Node 30、路由 74／74；Chrome 子路徑、CRUD、保存、模擬派工、拖曳、對話、心智圖、375px、零 API 請求。NOT VERIFIED：真實模型／自動合併端到端，需 Secrets；GitHub Windows／Ubuntu／瀏覽器 CI 已通過（run 38383501615）；Pages 於 main 合併後發布。
+- GitHub 初次 Ubuntu CI：資料夾選擇測試被 Windows guard 拒絕（3 error／1 failure）；測試只替換 folder_picker 模組的 OS 與程序旗標，保留實際主機／pathlib，新增非 Windows 拒絕測試。修正後 GitHub CI 三項通過。main 已設定 PR／strict required CI，Pages 與 both／自動合併設定已套用。
 - 既有 handoff 65 行超過 60，改為本輪新交接；檢查腳本加入 Linux pwsh fallback。設定見 docs/github-automation.md，決策 ADR-022。
 
 ## 2026-10-13：操作手冊 docs/user-guide.md 與 45 秒簡報影片
