@@ -1,5 +1,11 @@
 # 目前狀態
 
+## 2026-10-13：Claude App 倒回對話後沿用原鏡像卡
+
+- 原因：App 倒回訊息改用新的 CLI session id（舊 id 在 `priorCliSessionIds`），看板以 session id 找卡而多建一張同標題卡。claude_sessions 回傳 `priorIds`，鏡像回合與 Claude 同步依此把原卡的 sourceId 改到新 id，舊 id 的 runs 併入新 session（`priorSessionIds` 保留舊 id），詳情不再重複列同一段 session；新 id 已有自己的卡則不動。
+- 重複卡 056C36 經使用者同意合併進 8142B6 並刪除，合併前備份資料庫至 work。
+- VERIFIED：Python 76 項、正式服務重啟後 /api/state 只剩一張卡且狀態列正確；Browser 窗格詳情只列一個來源 session。NOT VERIFIED：真實 App 再次倒回的端到端。
+
 ## 2026-10-13：背景中的 Codex 視窗不再反覆重建嵌入看板
 
 - 使用者要求查服務重啟後重新載入延遲（35 秒～2 分鐘）。實測（看板 frame 與主頁面放記憶體計時器）：視窗在背景時主頁面計時器先 2.5 秒，30 秒後降為 20、60、60 秒，約 4 分鐘後完全不再醒來；送進頁面的 CDP 指令常 10 秒逾時。延遲原因：換頁面要等看板頁面輪詢拿到 403，頁面被節流／停住時無法進行，前景時 8～14 秒。屬 Chromium／Electron 背景省電，非看板邏輯。

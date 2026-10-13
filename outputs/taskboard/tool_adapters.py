@@ -33,6 +33,8 @@ def task_session_keys(task):
     keys = set()
     if task.get('sourceId'):
         keys.add((task.get('sourceTool') or task_tool(task), task['sourceId']))
+    for prior in task.get('priorSessionIds') or []:  # ids a Claude App rewind replaced; their runs moved to sourceId
+        keys.add((task.get('sourceTool') or task_tool(task), prior))
     for run in task.get('runs', []):
         if run.get('threadId'):
             keys.add((run_tool(task, run), run['threadId']))

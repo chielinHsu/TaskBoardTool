@@ -355,7 +355,7 @@ class ToolTests(unittest.TestCase):
         meta_dir.mkdir(parents=True)
         (meta_dir / 'local_desk-1.json').write_text(json.dumps({'sessionId': 'desk-1', 'cliSessionId': session, 'cwd': cwd, 'title': 'App 對話',
             'lastActivityAt': 1791597660000, 'createdAt': 1791597000000, 'model': 'claude-opus-5-5', 'isArchived': False,
-            'postTurnSummary': {'status_category': 'blocked'}}), encoding='utf-8')
+            'postTurnSummary': {'status_category': 'blocked'}, 'priorCliSessionIds': ['11111111-2222-3333-4444-555555555555', session, '../x', 7]}), encoding='utf-8')
         (meta_dir / 'local_desk-2.json').write_text(json.dumps({'cliSessionId': 'ffffffff-0000-0000-0000-000000000000', 'cwd': cwd, 'title': '已封存', 'isArchived': True}), encoding='utf-8')
         transcript = self.root / 'projects' / encode_project(cwd) / f'{session}.jsonl'
         transcript.parent.mkdir(parents=True)
@@ -367,6 +367,7 @@ class ToolTests(unittest.TestCase):
         rows = self.index.list(now=1791597660)
         self.assertEqual(len(rows), 1)
         self.assertEqual((rows[0]['id'], rows[0]['title'], rows[0]['desktopId'], rows[0]['model']), (session, 'App 對話', 'local_desk-1', 'claude-opus-5-5'))
+        self.assertEqual(rows[0]['priorIds'], ['11111111-2222-3333-4444-555555555555'])  # ids an App rewind replaced
         self.assertEqual(rows[0]['sessionStatus']['status'], 'in_review')
         self.assertIn('需要你回覆', rows[0]['sessionStatus']['label'])
         self.board.claude_list()

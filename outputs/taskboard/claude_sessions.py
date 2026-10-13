@@ -151,9 +151,13 @@ class ClaudeSessionIndex:
             cwd = data.get('cwd') or ''
             updated = _timestamp(data.get('lastActivityAt') or data.get('createdAt') or 0)
             summary = data.get('postTurnSummary') if isinstance(data.get('postTurnSummary'), dict) else {}
+            # A rewind in the App forks the conversation onto a new CLI session id; the ids it replaced stay listed here.
+            prior = data.get('priorCliSessionIds') if isinstance(data.get('priorCliSessionIds'), list) else []
+            prior_ids = [value for value in prior if isinstance(value, str) and value != session_id
+                         and re.fullmatch(r'[A-Za-z0-9-]{1,64}', value)]
             rows.append({'id': session_id, 'tool': 'claude', 'title': (data.get('title') or '').strip() or session_id,
                          'cwd': cwd, 'updatedAt': updated, 'createdAt': _timestamp(data.get('createdAt') or 0) or updated,
-                         'model': data.get('model') or '', 'desktopId': path.stem, 'origin': 'desktop',
+                         'model': data.get('model') or '', 'desktopId': path.stem, 'origin': 'desktop', 'priorIds': prior_ids,
                          'sessionStatus': self.signal(self.transcript_path(session_id, cwd), now, summary.get('status_category') or '')})
         rows.sort(key=lambda row: -row['updatedAt'])
         return rows[:limit]

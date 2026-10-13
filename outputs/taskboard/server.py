@@ -840,8 +840,17 @@ class Board:
                 chat['project'] = groups.get(chat.get('desktopId', ''), '')
             with self.lock:
                 self.claude_chats = {c['id']: c for c in chats}
-                for task in self.store.all():  # an App rename (or its late automatic title) reaches the mirrored card
-                    if task.get('sourceTool') == 'claude' and self.follow_app_title(task, self.claude_chats.get(task.get('sourceId'))):
+                tasks = self.store.all()
+                linked = {key for task in tasks for key in task_session_keys(task)}
+                forks = {prior: c['id'] for c in chats for prior in c.get('priorIds') or [] if ('claude', c['id']) not in linked}
+                for task in tasks:
+                    if task.get('sourceTool') != 'claude':
+                        continue
+                    forked = forks.pop(task.get('sourceId'), '')
+                    chat = self.claude_chats.get(forked or task.get('sourceId'))
+                    changed = self.adopt_fork(task, forked, chat) if forked else self.fold_forks(task, chat)
+                    # an App rename (or its late automatic title) reaches the mirrored card
+                    if self.follow_app_title(task, chat) or changed:
                         self.store.put(task)
                 self.claude_sync.update(updatedAt=stamp(), error='', hasMore=has_more)
             return {'chats': chats, 'hasMore': has_more}
@@ -910,7 +919,12 @@ class Board:
                 run = active['runs'][-1] if active.get('runs') else {}
                 if run_tool(active, run) == tool and run.get('threadId', '') in ('', session_id):
                     return {'mirrored': False, 'reason': 'board-run'}
-            task = next((t for t in self.store.all() if (tool, session_id) in task_session_keys(t)), None)
+            tasks = self.store.all()
+            task = next((t for t in tasks if (tool, session_id) in task_session_keys(t)), None)
+            if task is None:
+                task = self.forked_card(tool, session_id, tasks)
+                if task and not (active and task['id'] == active['id']):
+                    self.adopt_fork(task, session_id, self.chat(tool, session_id))
             if task and active and task['id'] == active['id']:
                 # The board is running its own session on this mirrored card (a follow-up sent from the card):
                 # the App's turns leave it alone until that run ends, or its runs and session binding would be overwritten.
@@ -989,6 +1003,40 @@ class Board:
             saved = self.store.put(task)
             seeded = saved.get('brief') == 'seed'
             return {'mirrored': True, 'created': created, 'task': saved, 'wantsBrief': seeded, 'briefSource': saved['description'] if seeded else ''}
+
+    def forked_card(self, tool, session_id, tasks):
+        """The card of the conversation an App rewind forked this session from (the App lists the replaced CLI ids
+        as priorIds), so the fork keeps mirroring onto it instead of creating a second card; None when there is none."""
+        prior = (self.chat(tool, session_id) or {}).get('priorIds') or []
+        return next((t for p in reversed(prior) for t in tasks if (tool, p) in task_session_keys(t)), None)
+
+    def adopt_fork(self, task, session_id, chat):
+        """Point the card at the App's current CLI session id and fold the replaced session's runs into it. True when changed."""
+        if task.get('sourceId') == session_id:
+            return self.fold_forks(task, chat)
+        task['sourceId'] = session_id
+        task['comments'].append({'author': '系統', 'at': stamp(), 'text': 'Claude App 倒回對話後改用新的 session，'
+                                 '卡片改為追蹤新的 session，先前的回合併入這個 session。'})
+        self.fold_forks(task, chat)
+        return True
+
+    def fold_forks(self, task, chat):
+        """A rewind copies the conversation into the new session, so runs on the ids it replaced are shown under the
+        current one; the replaced ids are kept in priorSessionIds and still reach the card. True when changed."""
+        prior = set((chat or {}).get('priorIds') or [])
+        current, tool = task.get('sourceId'), task.get('sourceTool') or task_tool(task)
+        folded = set()
+        for run in task.get('runs', []):
+            if run.get('threadId') in prior and run_tool(task, run) == tool:
+                folded.add(run['threadId'])
+                run['threadId'] = current
+        if task.get('workerThreadId') in prior:
+            folded.add(task['workerThreadId'])
+            task['workerThreadId'] = current
+        if not folded:
+            return False
+        task['priorSessionIds'] = sorted(set(task.get('priorSessionIds') or []) | folded)
+        return True
 
     def follow_app_title(self, task, chat):
         """A mirrored card's title tracks the App's session title (its late automatic one, or a rename in the App)

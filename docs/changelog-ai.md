@@ -1,5 +1,9 @@
 # AI 工作紀錄
 
+## 2026-10-13：Claude App 倒回對話不再多建鏡像卡
+
+- 使用者問為何看板有兩張同標題卡。查 App 中繼資料發現倒回（rewind）後 CLI session id 改變，舊 id 列在 `priorCliSessionIds`。claude_sessions.py 回傳 `priorIds`；server.py 新增 `forked_card()`／`adopt_fork()`／`fold_forks()`，鏡像回合與 `claude_list()` 同步把原卡改綁新 id，並把舊 id 的 runs 併入新 session（使用者回報詳情仍列兩個相同 session 後加入）。使用者同意後合併 056C36 進 8142B6（先備份資料庫、停服務、合併、重啟）。Python 76 項通過；正式服務只剩一張卡，詳情只列一個來源 session。
+
 ## 2026-10-13：查明服務重啟後重新載入延遲，背景視窗不再反覆重建嵌入看板
 
 - 使用者要求查延遲原因。以記憶體計時器實測背景視窗：主頁面計時器降為每 60 秒，之後完全停住，CDP 指令常逾時；延遲源自頁面被節流／停住，前景 8～14 秒。並發現舊 helper 把逾時當斷線，約每 5 分鐘重建看板。使用者選修第 1 項：cdp.mjs 逾時標記、app-injector.mjs 逾時只記 `renderer-busy` 不重建、loadFrame 失敗必換新 iframe。以 Debugger.pause 可控重現驗證不重建、背景 10 分鐘 0 次重新載入、前景重啟服務 14 秒恢復、App 測試 4 項 PASS。

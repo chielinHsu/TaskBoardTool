@@ -195,6 +195,64 @@ class MirrorTests(unittest.TestCase):
         third = self.mirror(event='start', turnId='turn-3', text='第三句')['task']
         self.assertEqual([r['status'] for r in third['runs']], ['completed', 'unknown', 'running'])
 
+    def forked_chat(self, fork, title='同一段對話'):
+        return {'id': fork, 'tool': 'claude', 'title': title, 'cwd': '', 'updatedAt': 2, 'createdAt': 1, 'model': '', 'desktopId': 'local_x',
+                'origin': 'desktop', 'project': '', 'priorIds': [SESSION],
+                'sessionStatus': {'status': 'in_review', 'label': '最近回合已結束', 'basis': 'transcript'}}
+
+    def test_a_rewind_in_the_app_keeps_mirroring_onto_the_same_card(self):
+        task = self.mirror(event='start', turnId='turn-1', text='第一句')['task']
+        self.mirror(event='complete', turnId='turn-1', answer='好', reason='answer')
+        fork = 'a1b2c3d4-0000-4000-8000-000000000002'
+        self.board.claude_chats = {fork: self.forked_chat(fork)}
+        again = self.board.mirror_turn({'tool': 'claude', 'sessionId': fork, 'event': 'start', 'turnId': 'turn-2', 'text': '倒回後重送'})
+        self.assertFalse(again['created'])
+        saved = again['task']
+        # the App copied the conversation into the fork: the replaced session's runs are shown under it, not as a second session
+        self.assertEqual((saved['id'], saved['sourceId'], saved['workerThreadId'], [r['threadId'] for r in saved['runs']], saved['priorSessionIds']),
+                         (task['id'], fork, fork, [fork, fork], [SESSION]))
+        self.assertTrue(any('倒回對話' in c['text'] for c in saved['comments']))
+        self.assertEqual(len(self.board.store.all()), 1)
+        # the replaced id still reaches the card
+        self.assertIn(('claude', SESSION), server.task_session_keys(self.board.store.get(task['id'])))
+        self.board.claude_sync['updatedAt'] = server.stamp()
+        self.assertEqual([t['id'] for t in self.board.state()['tasks']], [task['id']])  # no read-only card for the fork
+
+    def test_the_session_sync_moves_a_card_to_its_forked_session_before_the_next_turn(self):
+        task = self.mirror(event='start', turnId='turn-1', text='第一句')['task']
+        self.mirror(event='complete', turnId='turn-1', answer='好', reason='answer')
+        fork = 'a1b2c3d4-0000-4000-8000-000000000002'
+        self.board.adapters['claude'].list_sessions = lambda: ([self.forked_chat(fork, 'App 標題')], False)
+        self.board.claude_list()
+        saved = self.board.store.get(task['id'])
+        self.assertEqual((saved['sourceId'], saved['title'], [r['threadId'] for r in saved['runs']]), (fork, 'App 標題', [fork]))
+        tasks = self.board.state()['tasks']
+        self.assertEqual([t['id'] for t in tasks], [task['id']])
+        self.assertEqual(tasks[0]['sessionStatus']['status'], 'in_review')
+        self.board.claude_list()  # already followed: nothing new is written
+        self.assertEqual(self.board.store.get(task['id'])['version'], saved['version'])
+
+    def test_a_card_already_on_the_fork_folds_the_replaced_sessions_runs(self):
+        task = self.mirror(event='start', turnId='turn-1', text='第一句')['task']
+        self.mirror(event='complete', turnId='turn-1', answer='好', reason='answer')
+        fork = 'a1b2c3d4-0000-4000-8000-000000000002'
+        stored = self.board.store.get(task['id'])
+        stored['sourceId'] = fork  # merged by hand before runs were folded
+        self.board.store.put(stored)
+        self.board.adapters['claude'].list_sessions = lambda: ([self.forked_chat(fork)], False)
+        self.board.claude_list()
+        saved = self.board.store.get(task['id'])
+        self.assertEqual(([r['threadId'] for r in saved['runs']], saved['workerThreadId'], saved['priorSessionIds']), ([fork], fork, [SESSION]))
+
+    def test_a_fork_already_on_its_own_card_is_not_moved_onto_the_older_card(self):
+        old = self.mirror(event='start', turnId='turn-1', text='第一句')['task']
+        fork = 'a1b2c3d4-0000-4000-8000-000000000002'
+        own = self.board.mirror_turn({'tool': 'claude', 'sessionId': fork, 'event': 'start', 'turnId': 'turn-2', 'text': '另一張'})['task']
+        self.board.adapters['claude'].list_sessions = lambda: ([self.forked_chat(fork)], False)
+        self.board.claude_list()
+        self.assertEqual(self.board.store.get(old['id'])['sourceId'], SESSION)
+        self.assertEqual(self.board.store.get(own['id'])['sourceId'], fork)
+
     def test_done_card_reopens_and_aborted_or_failed_turns_are_recorded(self):
         task = self.mirror(event='start', turnId='t1', text='需求')['task']
         self.mirror(event='complete', turnId='t1', answer='完成', reason='answer')

@@ -1,4 +1,12 @@
-# 交接（2026-10-13）：鏡像卡標題去掉 `<system-reminder>`，並跟隨 Claude App session 標題
+# 交接（2026-10-13）：Claude App 倒回對話後不再多建一張鏡像卡
+
+## 最新（同日續四）：App 倒回（rewind）沿用原卡
+- 根因（Observed Fact）：App 倒回訊息會改用新的 CLI session id，舊 id 記在 local_*.json 的 `priorCliSessionIds`／`rewindEdges`；`mirror_turn` 只以 (tool, sessionId) 找卡，新 id 便另建卡（8142B6 與 056C36 同標題）。
+- 修正：claude_sessions.py `list()` 回傳 `priorIds`；server.py `forked_card()`／`adopt_fork()`：鏡像回合找不到卡時依 priorIds 找原卡並把 sourceId 改成新 id，系統留言說明；`fold_forks()` 把舊 id 的 runs／workerThreadId 改到新 id（倒回會把對話複製進新 session，詳情不再重複列同一段 session），舊 id 存 `priorSessionIds`，`task_session_keys` 仍認得；`claude_list()` 同步時也先改綁，避免出現唯讀卡、狀態列對不上；新 id 已有自己的卡則不動。
+- 資料：使用者同意後把 056C36 合併進 8142B6（runs／留言依時間合併、sourceId=6a7af013、workerThreadId／result 取較新者）並刪除 056C36。合併前備份 `work/db-backup-<時間>/taskboard.sqlite`；停服務→合併→start.ps1 -NoBrowser 重啟。
+- 使用者回報合併後詳情仍列出兩個相同 session，因此加入 fold_forks；同步時已在新 id 上的卡也會折疊。合併留言的「保留在原 session 下」改為「併入這個 session」（第二次停服務前再備份）。
+- VERIFIED：Python 76 項（mirror 新增 4 項、tools priorIds 斷言）；正式 /api/state 只剩 8142B6，runs 已無 23a057d3、`priorSessionIds` 為舊 id；Browser 窗格詳情只列 6a7af013 一個來源 session（另有 6 次延續對話）及看板自開的 c1ef9f4b、a413b722。NOT VERIFIED：真實 App 再倒回一次的端到端；未提交。
+- 實際失敗：以 Python 文字模式改測試檔寫出 CRLF，已改回 LF。
 
 ## 最新（同日續三）：session 只顯示真正的第一次提問
 - claude_sessions.py `first_prompt()` 讀 transcript 開頭並快取；`/api/chat` 回 `firstPrompt`；`Board.first_prompt` 優先採用。index.html session 區塊改為純文字「第一次提問」＋「另有 N 次延續對話」純文字，不顯示回報、不收合縮排；`loadFirstPrompt()` 懶載入。
@@ -50,11 +58,3 @@ outputs/taskboard/server.py、outputs/taskboard/claude_sessions.py、tests/test_
 
 ## 未提交變更
 標題修正已 commit（只 stage 本輪 hunk）。仍未提交、屬另一個 session：index.html 心智圖；`TASKBOARD_DISPATCHED`（claude_adapter.py、mod register.tsx／taskboard.test.ts、server.py 遲到 board-run 判斷、test_taskboard_mirror.py 對應測試）及其文件段落。
-
-## 假設與未驗證事項
-App 改名寫入 `local_*.json` 的 `title`：本機 35 個 session 為 `titleSource: 'user'`，推定是手動改名；本輪未實際改名觀察寫入時機。
-
-## 嵌入看板：服務重啟卡死（8bfb6c9，已部署）與背景重建（本輪）
-- 8bfb6c9：403 後對同一 iframe `Page.setDocumentContent` 保留 JS realm，新主程式因 `const TOKEN` 重複宣告不執行；改 `resetFrame()` 換新 iframe，修 CDP 連線外洩。主 checkout 部署與 App 測試 VERIFIED（12:15）。
-- 本輪根因：視窗在背景時頁面計時器先降為每 60 秒、數分鐘後完全停住（實測），CDP 指令常 10 秒逾時；舊 helper 把逾時當斷線而重連、重建看板（約每 5 分鐘一次）。重新載入延遲（35～128 秒）同源：要等頁面恢復執行，前景約 8～14 秒。
-- 修正：cdp.mjs 逾時錯誤帶 `timeout`；app-injector.mjs 已建立且 WebSocket 仍開的連線逾時只記 `renderer-busy` 不重建；loadFrame 動過 iframe 後失敗必換新 iframe，`resetFrame()` 成功才清旗標。VERIFIED（worktree helper 34604）：Debugger.pause 主頁面 35 秒→`renderer-busy`、0 次重新載入、恢復後同一 frame ready；背景 10 分鐘 0 次重新載入；前景重啟服務 14 秒恢復、token 一致；App 測試 4 項 PASS。部署：stop-app.ps1＋主 checkout start-app.ps1。
