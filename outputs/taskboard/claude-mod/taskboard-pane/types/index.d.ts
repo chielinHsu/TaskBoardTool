@@ -33,6 +33,8 @@ export type BoardSnapshot = {
   tasks: BoardTask[]
   projects: Record<string, string[]>
   approvals: BoardApproval[]
+  groupsAt: number
+  groupError: string
 }
 
 export type Draft = {

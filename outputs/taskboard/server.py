@@ -21,7 +21,7 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
-from session_sync import SessionSignals, project_from_cwd, session_card
+from session_sync import UNGROUPED, SessionSignals, project_from_cwd, session_card
 from tool_adapters import BoardError, CodexAdapter, TOOLS, TOOL_LABELS, task_tool, run_tool, session_tool, task_session_keys
 from claude_adapter import ClaudeAdapter, resolve_command
 from claude_sessions import strip_reminders
@@ -107,12 +107,14 @@ STATUSES = ('backlog', 'todo', 'in_progress', 'in_review', 'done')
 STATUS_LABELS = {'backlog': '列管', 'todo': '待辦', 'in_progress': '進行中', 'in_review': '待審核', 'done': '已完成'}
 PRIORITIES = ('low', 'medium', 'high', 'urgent')
 LOG = logging.getLogger('taskboard')
-API_VERSION = '1.10.0'
+API_VERSION = '1.11.0'
 EXPORT_SCHEMA = 5
 EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
 # The five Claude roles of MODEL_ROUTING.md as (model alias, effort); Codex keeps its own default model.
 ROLE_ROUTING = {'fast-worker': ('haiku', 'low'), 'developer': ('sonnet', 'medium'), 'developer-deep': ('sonnet', 'high'),
                 'architect': ('opus', 'high'), 'architect-deep': ('opus', 'xhigh')}
+
+GROUPS_FRESH_SECONDS = 600  # an App group mapping this recent outranks another session's failed read
 
 
 def stamp():
@@ -534,6 +536,7 @@ class Board:
                     'chats': list(self.chats.values()), 'chatSync': dict(self.chat_sync),
                     'claudeChats': list(self.claude_chats.values()), 'claudeSync': dict(self.claude_sync),
                     'claudeGroupsAt': self.store.setting('claudeGroupsAt') or 0,
+                    'claudeGroupsError': self.store.setting('claudeGroupsError') or '',
                     'tools': {tool: adapter.capabilities() for tool, adapter in self.adapters.items()},
                     'version': API_VERSION}
 
@@ -655,7 +658,7 @@ class Board:
                 raise BoardError('執行中的任務請先停止；留言可以使用下方的新增留言。', 409)
             if task['status'] == 'in_progress' and body.get('status', 'in_progress') != 'in_progress':
                 raise BoardError('這張卡片正由 Claude App 的對話執行中，等回合結束後再移動。', 409)
-            previous_description, previous_title = task['description'], task['title']
+            previous_description, previous_title, previous_project = task['description'], task['title'], task['project']
             for key in ('title', 'description', 'project', 'cwd', 'resultUrl'):
                 if key in body:
                     task[key] = clean_text(body[key], key, 1000 if key == 'title' else 20000)
@@ -663,6 +666,8 @@ class Board:
                 task['brief'] = 'manual'  # a hand-edited brief is the card's own; the session's drafts never replace it again
             if 'titleSource' in task and task['title'] != previous_title:
                 task['titleSource'] = 'manual'  # likewise a title edited on the board no longer follows the App's session title
+            if task.get('sourceTool') == 'claude' and task['project'] != previous_project:
+                task['projectSource'] = 'manual'  # and a project typed on the board no longer follows the App's sidebar group
             if not task['title']:
                 raise BoardError('請填寫任務標題。')
             if 'status' in body and body['status'] != task['status']:
@@ -814,7 +819,17 @@ class Board:
 
     def set_claude_groups(self, body):
         """Sidebar groups of the Claude App, relayed by the taskboard-pane mod (the App keeps them in its own state,
-        not on disk). Stored by desktop session id; applied as the Claude session card's project name."""
+        not on disk). Stored by desktop session id; applied as the Claude session card's project name, 未分組 for a
+        session in no group. A failed read is relayed as {error}: the last mapping stays and the board shows why."""
+        if 'sessions' not in body and 'error' in body:
+            error = clean_text(str(body.get('error') or ''), '錯誤', 500) or 'App 群組讀取失敗'
+            with self.lock:
+                # Every App session runs the mod; one that cannot read the groups must not mark a mapping that
+                # another session refreshed lately (the mod re-sends an unchanged mapping every 5 minutes) as stale.
+                if stamp() - (self.store.setting('claudeGroupsAt') or 0) < GROUPS_FRESH_SECONDS:
+                    return {'ok': True, 'ignored': True}
+                self.store.set_setting('claudeGroupsError', error)
+            return {'ok': True, 'error': error}
         sessions = body.get('sessions')
         if not isinstance(sessions, list) or len(sessions) > 2000:
             raise BoardError('sessions 需為清單，最多 2000 筆。')
@@ -830,8 +845,12 @@ class Board:
         with self.lock:
             self.store.set_setting('claudeGroups', mapping)
             self.store.set_setting('claudeGroupsAt', stamp())
+            self.store.set_setting('claudeGroupsError', '')
             for chat in self.claude_chats.values():
                 chat['project'] = mapping.get(chat.get('desktopId', ''), '')
+            for task in self.store.all():
+                if self.follow_group_project(task, self.claude_chats.get(task.get('sourceId', ''))):
+                    self.store.put(task)
         return {'ok': True, 'groups': len(set(mapping.values())), 'sessions': len(mapping)}
 
     def claude_list(self):
@@ -857,8 +876,8 @@ class Board:
                     forked = forks.pop(task.get('sourceId'), '')
                     chat = self.claude_chats.get(forked or task.get('sourceId'))
                     changed = self.adopt_fork(task, forked, chat) if forked else self.fold_forks(task, chat)
-                    # an App rename (or its late automatic title) reaches the mirrored card
-                    changed = self.follow_cwd_project(task) or changed
+                    # an App rename (or its late automatic title), and the session's sidebar group, reach the mirrored card
+                    changed = self.follow_group_project(task, chat) or changed
                     if self.follow_app_title(task, chat) or changed:
                         self.store.put(task)
                 self.claude_sync.update(updatedAt=stamp(), error='', hasMore=has_more)
@@ -895,9 +914,12 @@ class Board:
                 if (tool, thread_id) in task_session_keys(task):
                     return task
             task = self.create({'title': chat['title'][:1000], 'cwd': chat['cwd'] if Path(chat['cwd']).is_dir() else '',
-                                'project': chat.get('project') or project_from_cwd(chat['cwd']), 'status': 'backlog', 'tool': tool})
+                                'project': chat.get('project') or (UNGROUPED if tool == 'claude' else project_from_cwd(chat['cwd'])),
+                                'status': 'backlog', 'tool': tool})
             task['sourceId'] = thread_id
             task['sourceTool'] = tool
+            if tool == 'claude':
+                task['projectSource'] = 'app'
             task['comments'].append({'text': '已連結來源聊天。請補上這次要執行的需求，放入待辦後才會派工；來源聊天不會被自動改動。', 'at': stamp(), 'author': '系統'})
             return self.store.put(task)
 
@@ -957,8 +979,8 @@ class Board:
                 title = chat_title or first_line(first_text)[:120]
                 task = self.create({'title': title, 'description': first_text, 'priority': 'high', 'tool': tool,
                                     'cwd': cwd if cwd and Path(cwd).is_absolute() and Path(cwd).is_dir() else '',
-                                    'project': chat.get('project') or project_from_cwd(cwd, '個人任務')})
-                task['sourceId'], task['sourceTool'], task['brief'] = session_id, tool, 'seed'
+                                    'project': chat.get('project') or UNGROUPED})
+                task['sourceId'], task['sourceTool'], task['brief'], task['projectSource'] = session_id, tool, 'seed', 'app'
                 task['titleSource'] = 'app' if chat_title else 'seed'
                 task['comments'].append({'author': '系統', 'at': stamp(), 'text': '由 Claude App 的對話自動建立。看板鏡像這個 session 的回合：'
                                          '送出需求時進入進行中，回合結束後進入待審核；看板不會派工、延續或停止它。'})
@@ -1058,18 +1080,28 @@ class Board:
         task['title'], task['titleSource'] = title, 'app'
         return True
 
-    def follow_cwd_project(self, task):
-        """Cards created before worktree／scratch folders were recognised took the folder's random name as their project.
-        While the project is still exactly that name it is the old automatic value, so it moves to the repository (or the
-        scratch label); any other project — an App group or a name typed on the board — is left alone. True when changed."""
-        cwd = task.get('cwd') or ''
-        if not cwd or task.get('project') != PureWindowsPath(cwd).name:
+    def follow_group_project(self, task, chat):
+        """A card bound to a Claude App session takes the session's sidebar group as its project, 未分組 while it has none,
+        and follows a later move to another group (projectSource app). A project typed on the board (manual) never moves.
+        Nothing moves before the App's groups first arrive (unknown is not ungrouped) or for a session not listed now.
+        A card from before projectSource took an automatic project (a folder or repository name, 個人任務, 未分組 or an
+        App group) and follows from now on; any other project was typed by hand and stays. True when changed."""
+        if task.get('sourceTool') != 'claude' or task.get('projectSource') == 'manual' or not chat:
             return False
-        project = project_from_cwd(cwd, task['project'])
-        if project == task['project']:
+        if not self.store.setting('claudeGroupsAt'):
             return False
-        task['project'] = project
-        return True
+        changed = False
+        if task.get('projectSource') != 'app':
+            cwds = [c for c in (task.get('cwd'), chat.get('cwd')) if c]
+            automatic = {'', '個人任務', UNGROUPED, *self.claude_groups().values()}
+            automatic.update(name for c in cwds for name in (PureWindowsPath(c).name, project_from_cwd(c, '')))
+            task['projectSource'], changed = ('app' if task.get('project', '') in automatic else 'manual'), True
+            if task['projectSource'] == 'manual':
+                return True
+        project = chat.get('project') or UNGROUPED
+        if task.get('project') != project:
+            task['project'], changed = project, True
+        return changed
 
     def legacy_title_source(self, task, tool, session_id, chat):
         """Cards mirrored before titleSource existed follow the App only while their title is still the automatic one."""
@@ -1182,7 +1214,8 @@ class Board:
         with self.lock:
             for key in order:
                 spec = by_key[key]
-                task = self.create({'title': spec['title'], 'description': spec['description'], 'project': project or '個人任務',
+                task = self.create({'title': spec['title'], 'description': spec['description'],
+                                    'project': project or (UNGROUPED if spec['tool'] == 'claude' else '個人任務'),
                                     'cwd': spec['cwd'], 'priority': spec['priority'], 'status': spec['status'], 'tool': spec['tool'],
                                     'model': spec['model'], 'effort': spec['effort'],
                                     'labels': list(dict.fromkeys([name] + ([spec['role']] if spec['role'] else []) + [str(l) for l in spec['labels']])),

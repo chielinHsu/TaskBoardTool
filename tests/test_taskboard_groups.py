@@ -33,7 +33,7 @@ class GroupTests(unittest.TestCase):
         self.board.claude_chats = {'s1': self.chat('s1', 'local_a', cwd), 's2': self.chat('s2', 'local_b', cwd)}
         self.board.claude_sync['updatedAt'] = server.stamp()
         cards = {t['sourceId']: t for t in self.board.state()['tasks'] if t.get('readOnly')}
-        self.assertEqual(cards['s1']['project'], self.root.name)  # folder name until the App groups arrive
+        self.assertEqual(cards['s1']['project'], '未分組')  # a Claude session card is never named after its folder
         result = self.board.set_claude_groups({'sessions': [
             {'sessionId': 'local_a', 'group': {'id': 'cg-1', 'name': '交易工具'}},
             {'sessionId': 'local_zzz', 'group': {'id': 'cg-2', 'name': '不存在的 session'}},
@@ -41,7 +41,7 @@ class GroupTests(unittest.TestCase):
         self.assertEqual((result['groups'], result['sessions']), (2, 2))
         cards = {t['sourceId']: t for t in self.board.state()['tasks'] if t.get('readOnly')}
         self.assertEqual(cards['s1']['project'], '交易工具')
-        self.assertEqual(cards['s2']['project'], self.root.name)
+        self.assertEqual(cards['s2']['project'], '未分組')
         self.assertGreater(self.board.state()['claudeGroupsAt'], 0)
         # A later read-only sync re-applies the stored mapping.
         self.board.adapters['claude'].list_sessions = lambda: ([self.chat('s1', 'local_a', cwd)], False)
@@ -50,6 +50,8 @@ class GroupTests(unittest.TestCase):
         # Importing the chat as a dispatch card keeps the App group as the project.
         imported = self.board.import_chat('s1', 'claude')
         self.assertEqual(imported['project'], '交易工具')
+        self.board.claude_chats['s2'] = self.chat('s2', 'local_b', cwd)
+        self.assertEqual(self.board.import_chat('s2', 'claude')['project'], '未分組')
         # The mapping is persisted in settings, so a restarted service keeps it.
         self.board.store.db.close()
         self.board.store = server.Store(self.root / 'board')

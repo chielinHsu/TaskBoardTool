@@ -19,8 +19,11 @@ const PRIORITY_RANK: Record<string, number> = { low: 0, medium: 1, high: 2, urge
 
 const EMPTY: BoardSnapshot = {
   status: 'idle', error: '', updatedAt: 0, activeId: null, automatic: true, codexConnected: false,
-  claudeAvailable: false, codexSessions: 0, claudeSessions: 0, tasks: [], projects: {}, approvals: [],
+  claudeAvailable: false, codexSessions: 0, claudeSessions: 0, tasks: [], projects: {}, approvals: [], groupsAt: 0, groupError: '',
 }
+// A card's project when it has none: a Claude card belongs to no App sidebar group, any other is a personal task.
+const UNGROUPED = '未分組'
+const projectOf = (t: any) => String(t.project || ((t.tool || 'codex') === 'claude' ? UNGROUPED : '個人任務'))
 const EMPTY_DRAFT: Draft = { open: false, title: '', description: '', tool: 'codex', model: '', priority: 'medium', status: 'backlog', cwd: '', project: '' }
 const snapshot = atom({ plugin: 'taskboard-pane', key: 'snapshot' } as const, EMPTY)
 const draft = atom({ plugin: 'taskboard-pane', key: 'draft' } as const, EMPTY_DRAFT)
@@ -83,14 +86,26 @@ function toApproval(a: any): BoardApproval {
   return { id: String(a.id), tool, title, detail: detail.slice(0, 400) }
 }
 
-async function refresh($: Engine): Promise<void> {
+// Every write of the snapshot redraws the pane, and a redraw shuts a Select the person has open. So a poll that
+// brings the same board writes nothing, and while the new-task form is open the board's changes wait (a new
+// approval or a lost connection excepted) until the form closes or the person presses 重新整理 (force).
+const comparable = (board: BoardSnapshot) => JSON.stringify({ ...board, updatedAt: 0 })
+async function publish($: Engine, next: BoardSnapshot, force: boolean): Promise<void> {
+  const previous = await read($, snapshot)
+  if (comparable(previous) === comparable(next)) return
+  const urgent = previous.status !== next.status || previous.error !== next.error || JSON.stringify(previous.approvals) !== JSON.stringify(next.approvals)
+  if (!force && !urgent && (await read($, draft)).open) return
+  await update($, snapshot, () => next)
+}
+
+async function refresh($: Engine, force = false): Promise<void> {
   try {
     const state = await api($, '/api/state')
     const now = await $.clock.now()
     const all: any[] = Array.isArray(state.tasks) ? state.tasks : []
     const projects: Record<string, string[]> = Object.create(null)
     for (const t of all) {
-      const name = String(t.project || '個人任務'), cwd = String(t.cwd || '')
+      const name = projectOf(t), cwd = String(t.cwd || '')
       projects[name] ??= []
       if (cwd && !projects[name].some(p => p.replace(/\\/g, '/').replace(/\/$/, '').toLowerCase() === cwd.replace(/\\/g, '/').replace(/\/$/, '').toLowerCase())) projects[name].push(cwd)
     }
@@ -104,12 +119,19 @@ async function refresh($: Engine): Promise<void> {
         .sort((a, b) => (PRIORITY_RANK[b.priority] ?? 1) - (PRIORITY_RANK[a.priority] ?? 1) || ((a.queuedAt || a.createdAt || 0) - (b.queuedAt || b.createdAt || 0)))
         .map(toTask),
       projects, approvals: (Array.isArray(state.approvals) ? state.approvals : []).map(toApproval),
+      groupsAt: Number(state.claudeGroupsAt || 0), groupError: String(state.claudeGroupsError || ''),
     }
-    await update($, snapshot, () => next)
+    await publish($, next, force)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    await update($, snapshot, previous => ({ ...previous, status: 'error', error: message }))
+    await publish($, { ...(await read($, snapshot)), status: 'error', error: message }, force)
   }
+}
+
+// Closing the form shows what the board did while it was open.
+async function closeForm($: Engine, next: (previous: Draft) => Draft): Promise<void> {
+  await update($, draft, next)
+  await refresh($, true)
 }
 
 async function loadModels($: Engine, tool: string): Promise<void> {
@@ -131,7 +153,7 @@ async function act($: Engine, label: string, run: () => Promise<unknown>): Promi
     ok = false
     say($, '失敗：' + (error instanceof Error ? error.message : String(error)))
   }
-  await refresh($)
+  await refresh($, true)
   return ok
 }
 
@@ -149,27 +171,67 @@ async function createCard($: Engine, start: boolean): Promise<void> {
     const task = await api($, '/api/tasks', 'POST', body)
     if (start) await api($, '/api/tasks/' + task.id + '/start', 'POST', {})
   })
-  if (ok) await update($, draft, previous => ({ ...EMPTY_DRAFT, open: false, tool: previous.tool, cwd: previous.cwd, project: previous.project }))
+  if (ok) await closeForm($, previous => ({ ...EMPTY_DRAFT, open: false, tool: previous.tool, cwd: previous.cwd, project: previous.project }))
 }
 
 // The Claude App keeps its sidebar groups in app state (no file the board could read), so the mod
-// relays {sessionId → group} through the app's own session connector; the board uses it as the project name.
+// relays {sessionId → group} through the app's own connectors; the board uses it as the project name (a Claude
+// session in no group is 未分組 there). One list_sessions for every session is too big a result (≈180,000
+// characters for 370 sessions): the engine hands back a "saved to a file" note instead of the JSON. So the
+// groups are listed first and each group's sessions read on their own. A failure is relayed too, so the board
+// can say why its groups are stale instead of showing every card as ungrouped without a reason.
 let groupSync: { cancel: () => void } | null = null
 let lastGroups = ''
+let lastGroupsSent = -Infinity
+let lastGroupTry = -Infinity
+const GROUPS_RESEND_MS = 300000 // an unchanged mapping is re-sent now and then: the board reads it as proof the groups are fresh
+class NoConnector extends Error {}
+
+async function connectorJson($: Engine, server: string, tool: string, args: Record<string, unknown>): Promise<any> {
+  // A session without the App's connectors (a terminal CLI) has no groups to tell: it stays silent.
+  const result = await $.mcp.call(server, tool, args).catch(error => { throw new NoConnector(String(error)) })
+  const text = result.content.find(block => block.type === 'text')?.text ?? ''
+  if (result.isError) throw new Error(text || tool + ' 回傳錯誤')
+  try { return JSON.parse(text) } catch { throw new Error(tool + ' 回傳的不是 JSON：' + text.split('\n')[0].slice(0, 160)) }
+}
+
+async function readGroups($: Engine): Promise<{ sessionId: string; group: { id: string; name: string } }[]> {
+  // Fails while no App window has reported its groups: unknown, never "everything ungrouped".
+  const groups = await connectorJson($, 'ccd_sidebar', 'list_groups', {})
+  if (!Array.isArray(groups)) throw new Error('list_groups 回傳的不是清單')
+  const sessions: { sessionId: string; group: { id: string; name: string } }[] = []
+  for (const g of groups) {
+    if (!g || !g.id || !g.name || !(Number(g.session_count) > 0)) continue
+    const rows = await connectorJson($, 'ccd_session_mgmt', 'list_sessions', { group: String(g.id), limit: Number(g.session_count) + 20 })
+    if (!Array.isArray(rows)) throw new Error('list_sessions 回傳的不是清單')
+    for (const r of rows) {
+      if (r && typeof r.sessionId === 'string') sessions.push({ sessionId: r.sessionId, group: { id: String(g.id), name: String(g.name) } })
+    }
+  }
+  return sessions
+}
+
 async function syncGroups($: Engine): Promise<void> {
+  const now = lastGroupTry = await $.clock.now().catch(() => 0)
+  let body: Record<string, unknown>
   try {
-    const result = await $.mcp.call('ccd_session_mgmt', 'list_sessions', { limit: 500 })
-    const text = result.content.find(block => block.type === 'text')?.text ?? ''
-    if (result.isError || !text) return
-    const rows = JSON.parse(text)
-    if (!Array.isArray(rows)) return
-    const sessions = rows.filter((r: any) => r && typeof r.sessionId === 'string' && r.group && r.group.name)
-      .map((r: any) => ({ sessionId: r.sessionId, group: { id: String(r.group.id || ''), name: String(r.group.name) } }))
-    const fingerprint = JSON.stringify(sessions)
-    if (fingerprint === lastGroups) return
-    await api($, '/api/claude-groups', 'POST', { sessions })
+    body = { sessions: await readGroups($) }
+  } catch (error) {
+    if (error instanceof NoConnector) return
+    body = { error: 'App 群組讀取失敗：' + (error instanceof Error ? error.message : String(error)) }
+  }
+  const fingerprint = JSON.stringify(body)
+  if (fingerprint === lastGroups && now - lastGroupsSent < GROUPS_RESEND_MS) return
+  try {
+    await api($, '/api/claude-groups', 'POST', body)
     lastGroups = fingerprint
-  } catch { /* the connector may be absent (terminal session) or the board down; the next tick retries */ }
+    lastGroupsSent = now
+  } catch { /* the board is down; the next tick retries */ }
+}
+
+// Every turn also refreshes the groups (at most once a minute), so they reach the board even while the pane is closed.
+async function syncGroupsSoon($: Engine): Promise<void> {
+  if ((await $.clock.now().catch(() => 0)) - lastGroupTry >= 60000) await syncGroups($)
 }
 
 // Every turn of this session is mirrored to the board as a run of one card (the session's first prompt
@@ -184,6 +246,7 @@ async function mirror($: Engine, payload: Record<string, unknown>): Promise<void
     const cwd = await $.session.cwd().catch(() => '')
     const model = await $.session.model().catch(() => '')
     const result = await api($, '/api/claude-turns', 'POST', { tool: 'claude', sessionId, cwd, model, ...payload })
+    await syncGroupsSoon($)
     await refresh($)
     if (payload.event === 'start' && result?.wantsBrief) void draftBrief($, sessionId, cwd, model, String(result.briefSource || payload.text || ''))
   } catch { /* the board may be down; the next turn relays again */ }
@@ -258,7 +321,7 @@ export const register: Register = on => {
       await refresh($)
       const lines = (result.tasks as any[]).map(t => '- ' + (t.plan?.key ?? t.id) + ' → ' + t.id + ' [' + (TOOL_LABEL[t.tool] || t.tool) + (t.model ? ' ' + t.model : '') + (t.effort ? '/' + t.effort : '') + '] ' + t.title + '（' + (STATUS_LABEL[t.status] || t.status) + '；前置：' + ((t.dependsOn as string[]).join('、') || '無') + '）')
       const text = '計畫「' + result.name + '」（' + result.planId + '）已建立 ' + lines.length + ' 張卡片，依賴順序 ' + (result.order as string[]).join(' → ') + '：\n' + lines.join('\n')
-      return { result: { content: [{ type: 'text', text }], isError: false } }
+      return { result: text }
     } catch (error) {
       return { deny: '匯入計畫失敗：' + (error instanceof Error ? error.message : String(error)) }
     }
@@ -376,8 +439,8 @@ export const register: Register = on => {
         {board.status === 'error' && <Text color="red">無法連線看板服務：{board.error}</Text>}
         {board.status === 'idle' && <Text dimColor>正在讀取看板…</Text>}
         <Box flexDirection="row" gap={1} flexWrap="wrap">
-          <Button key="new-card" variant="primary" onPress={() => run(async () => { await setDraft({ open: !form.open }); if (!form.open && !catalogue[form.tool]) await loadModels($, form.tool) })}>{form.open ? '收起新增' : '＋ 新增任務'}</Button>
-          <Button key="refresh" onPress={() => run(async () => { await refresh($); await syncGroups($) })}>重新整理</Button>
+          <Button key="new-card" variant="primary" onPress={() => run(async () => { if (form.open) { await closeForm($, previous => ({ ...previous, open: false })); return } await setDraft({ open: true }); if (!catalogue[form.tool]) await loadModels($, form.tool) })}>{form.open ? '收起新增' : '＋ 新增任務'}</Button>
+          <Button key="refresh" onPress={() => run(async () => { await syncGroups($); await refresh($, true) })}>重新整理</Button>
           <Button key="automatic" onPress={() => { void act($, board.automatic ? '已切換手動派工' : '已切換自動派工', () => api($, '/api/settings', 'PATCH', { automatic: !board.automatic })) }}>
             {board.automatic ? '改為手動' : '改為自動'}
           </Button>
@@ -403,15 +466,17 @@ export const register: Register = on => {
             <Input key="new-cwd" label="工作資料夾" placeholder="留白：自動建立獨立任務資料夾" value={form.cwd}
               onInput={value => run(() => setDraft({ cwd: value }))} onSubmit={value => run(() => setDraft({ cwd: value }))} />
             <Button key="pick-folder" onPress={() => run(pickFolder)}>{form.folderBusy ? '選擇中…' : '選擇資料夾…'}</Button>
+            <Text dimColor>表單開著時窗格暫停自動更新（新的核准請求除外），收起表單或按「重新整理」即更新。</Text>
             {!toolAvailable && <Text color="yellow">{TOOL_LABEL[form.tool]} 目前無法使用，卡片可先建立，但無法開始執行。</Text>}
             <Box flexDirection="row" gap={1} flexWrap="wrap">
               <Button key="create-card" variant="primary" onPress={() => { void createCard($, false) }}>建立卡片</Button>
               <Button key="create-start" onPress={() => { void createCard($, true) }}>建立並開始執行</Button>
-              <Button key="cancel-card" plain onPress={() => run(() => setDraft({ ...EMPTY_DRAFT, open: false }))}>取消</Button>
+              <Button key="cancel-card" plain onPress={() => run(() => closeForm($, () => ({ ...EMPTY_DRAFT, open: false })))}>取消</Button>
             </Box>
           </Box>
         )}
-        <Text dimColor>同步 session：Codex {board.codexSessions} · Claude Code {board.claudeSessions}（完整清單在網頁版）</Text>
+        <Text dimColor>同步 session：Codex {board.codexSessions} · Claude Code {board.claudeSessions}（完整清單在網頁版）{board.groupsAt ? '' : ' · App 群組尚未同步'}</Text>
+        {board.groupError !== '' && <Text color="yellow">{board.groupError}（無群組的 Claude 卡片暫列「{UNGROUPED}」）</Text>}
         {board.approvals.length > 0 && (
           <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
             <Text bold color="yellow">等待你核准（{board.approvals.length}）</Text>

@@ -90,6 +90,10 @@ class PlanTests(unittest.TestCase):
         self.assertIn('developer', by_key['tokens']['labels'])
         self.assertEqual(by_key['css']['plan']['name'], '深色模式')
         self.assertLess(by_key['tokens']['createdAt'], by_key['review']['createdAt'])
+        self.assertEqual({t['project'] for t in result['tasks']}, {'網站'})
+        # Without a project, a Claude item is 未分組 and a Codex item 個人任務.
+        bare = {t['plan']['key']: t for t in self.plan(project='')['tasks']}
+        self.assertEqual((bare['tokens']['project'], bare['docs']['project']), ('未分組', '個人任務'))
         self.assertEqual(self.rpc.calls, [])
         self.assertEqual(self.launches(), [])
 
@@ -207,7 +211,7 @@ class PlanTests(unittest.TestCase):
         loaded = self.get(task['id'])
         self.assertEqual((loaded['effort'], loaded['plan'], loaded['dependsOn'], loaded['blocks']), ('', None, [], []))
         self.assertEqual(server.EXPORT_SCHEMA, 5)
-        self.assertEqual(self.board.state()['version'], '1.10.0')
+        self.assertEqual(self.board.state()['version'], '1.11.0')
 
 
 if __name__ == '__main__':
