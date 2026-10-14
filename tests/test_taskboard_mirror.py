@@ -137,6 +137,36 @@ class MirrorTests(unittest.TestCase):
         self.assertEqual(self.board.store.get(task['id'])['title'], '看板上的標題')
         self.assertEqual(self.mirror(event='complete', turnId='t2', answer='好')['task']['title'], '看板上的標題')
 
+    def test_worktree_and_scratch_folders_name_the_repository_not_the_random_folder(self):
+        from session_sync import SCRATCH_PROJECT, project_from_cwd, session_card
+        self.assertEqual(project_from_cwd(r'D:\ClaudeWork\DiskAnalyzer\.claude\worktrees\calm-a1'), 'DiskAnalyzer')
+        self.assertEqual(project_from_cwd(r'D:\Repo\.Claude\Worktrees\calm-a1' + '\\'), 'Repo')
+        self.assertEqual(project_from_cwd(r'C:\Users\x\AppData\Roaming\Claude\scratch-workspaces\u1\u2\scratch-2026'), SCRATCH_PROJECT)
+        self.assertEqual(project_from_cwd(r'D:\Repo\worktrees\calm-a1'), 'calm-a1')  # only the App's .claude/worktrees layout
+        self.assertEqual((project_from_cwd(r'D:\CodexWork\TaskBoardTool'), project_from_cwd('')), ('TaskBoardTool', '既有聊天'))
+        worktree = self.root / 'Repo' / '.claude' / 'worktrees' / 'calm-a1'
+        worktree.mkdir(parents=True)
+        chat = {'id': SESSION, 'tool': 'claude', 'title': 'App 標題', 'cwd': str(worktree), 'updatedAt': 1, 'createdAt': 1, 'model': '',
+                'desktopId': 'local_x', 'origin': 'desktop', 'project': '', 'sessionStatus': {'status': 'backlog', 'label': '', 'basis': 'transcript'}}
+        self.assertEqual(session_card(chat, tool='claude')['project'], 'Repo')
+        task = self.mirror(event='start', turnId='t1', text='在 worktree 裡修', cwd=str(worktree))['task']
+        self.assertEqual(task['project'], 'Repo')
+        # A card mirrored before this kept the folder's random name; the next session sync moves it to the repository.
+        legacy = self.board.store.get(task['id'])
+        legacy['project'] = 'calm-a1'
+        self.board.store.put(legacy)
+        self.board.adapters['claude'].list_sessions = lambda: ([dict(chat)], False)
+        self.board.claude_list()
+        moved = self.board.store.get(task['id'])
+        self.assertEqual(moved['project'], 'Repo')
+        self.board.claude_list()  # already followed: nothing new is written
+        self.assertEqual(self.board.store.get(task['id'])['version'], moved['version'])
+        # A project typed on the board (or an App group) is the card's own and never follows the folder.
+        edited = self.board.update(task['id'], {'version': moved['version'], 'project': '我的分類', 'status': 'in_progress'})
+        self.board.claude_list()
+        self.assertEqual(self.board.store.get(task['id'])['project'], '我的分類')
+        self.assertEqual(self.board.store.get(task['id'])['version'], edited['version'])
+
     def test_a_card_titled_before_title_sources_existed_follows_the_app_only_while_untouched(self):
         self.board.read_chat = lambda thread_id, tool='codex': {'turns': [
             {'id': 't0', 'items': [{'type': 'userMessage', 'content': [{'type': 'text', 'text': '最初的需求'}]}]}]}

@@ -1,5 +1,9 @@
 # 2026-10-14：專案篩選、資料夾選擇與附件
 
+# 2026-10-14：Claude worktree 名稱不再成為專案名
+
+- 使用者要求處理 worktree 名稱變成專案名。新增 `project_from_cwd()` 與 `follow_cwd_project()`，worktree 取 repository 名、App 暫存工作區歸到「Claude 暫存工作區」，舊鏡像卡在同步時跟隨一次。Python 82 項通過；正式資料唯讀試算 42 張卡皆對應正確。
+
 - 使用者回報四項：全部工具時專案下拉只見 Codex、選擇資料夾卡住且不能輸入路徑、路徑候選點選後看不到完整路徑、需求與後續對話需要附加檔案或圖片。
 - 專案下拉改為單一合併清單；select-folder.ps1 改新式資料夾視窗；工作資料夾改可換行文字框＋完整路徑候選；新增 attachments.py 與 `/api/attachments`，Codex／Claude 派工帶附件路徑與原生圖片（ADR-023）。
 - VERIFIED：Python 81、Node 30、路由 74、projects／drag／demo DOM 測試、隔離服務瀏覽器操作。既有 details 測試第 33 行在 baseline 即失敗。

@@ -9,7 +9,7 @@ import hmac
 import json
 import logging
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import queue
 import re
 import secrets
@@ -21,7 +21,7 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
-from session_sync import SessionSignals, session_card
+from session_sync import SessionSignals, project_from_cwd, session_card
 from tool_adapters import BoardError, CodexAdapter, TOOLS, TOOL_LABELS, task_tool, run_tool, session_tool, task_session_keys
 from claude_adapter import ClaudeAdapter, resolve_command
 from claude_sessions import strip_reminders
@@ -858,6 +858,7 @@ class Board:
                     chat = self.claude_chats.get(forked or task.get('sourceId'))
                     changed = self.adopt_fork(task, forked, chat) if forked else self.fold_forks(task, chat)
                     # an App rename (or its late automatic title) reaches the mirrored card
+                    changed = self.follow_cwd_project(task) or changed
                     if self.follow_app_title(task, chat) or changed:
                         self.store.put(task)
                 self.claude_sync.update(updatedAt=stamp(), error='', hasMore=has_more)
@@ -894,7 +895,7 @@ class Board:
                 if (tool, thread_id) in task_session_keys(task):
                     return task
             task = self.create({'title': chat['title'][:1000], 'cwd': chat['cwd'] if Path(chat['cwd']).is_dir() else '',
-                                'project': chat.get('project') or (Path(chat['cwd']).name if chat['cwd'] else '既有聊天'), 'status': 'backlog', 'tool': tool})
+                                'project': chat.get('project') or project_from_cwd(chat['cwd']), 'status': 'backlog', 'tool': tool})
             task['sourceId'] = thread_id
             task['sourceTool'] = tool
             task['comments'].append({'text': '已連結來源聊天。請補上這次要執行的需求，放入待辦後才會派工；來源聊天不會被自動改動。', 'at': stamp(), 'author': '系統'})
@@ -956,7 +957,7 @@ class Board:
                 title = chat_title or first_line(first_text)[:120]
                 task = self.create({'title': title, 'description': first_text, 'priority': 'high', 'tool': tool,
                                     'cwd': cwd if cwd and Path(cwd).is_absolute() and Path(cwd).is_dir() else '',
-                                    'project': chat.get('project') or (Path(cwd).name if cwd else '個人任務')})
+                                    'project': chat.get('project') or project_from_cwd(cwd, '個人任務')})
                 task['sourceId'], task['sourceTool'], task['brief'] = session_id, tool, 'seed'
                 task['titleSource'] = 'app' if chat_title else 'seed'
                 task['comments'].append({'author': '系統', 'at': stamp(), 'text': '由 Claude App 的對話自動建立。看板鏡像這個 session 的回合：'
@@ -1055,6 +1056,19 @@ class Board:
         if not title or title == task['title']:
             return False
         task['title'], task['titleSource'] = title, 'app'
+        return True
+
+    def follow_cwd_project(self, task):
+        """Cards created before worktree／scratch folders were recognised took the folder's random name as their project.
+        While the project is still exactly that name it is the old automatic value, so it moves to the repository (or the
+        scratch label); any other project — an App group or a name typed on the board — is left alone. True when changed."""
+        cwd = task.get('cwd') or ''
+        if not cwd or task.get('project') != PureWindowsPath(cwd).name:
+            return False
+        project = project_from_cwd(cwd, task['project'])
+        if project == task['project']:
+            return False
+        task['project'] = project
         return True
 
     def legacy_title_source(self, task, tool, session_id, chat):
