@@ -8,6 +8,7 @@ Agent SDK speaks to the same CLI; their wire format is not published, so every e
 guarded by timeouts and the run fails visibly instead of hanging when the CLI changes.
 """
 from __future__ import annotations
+import base64
 import json
 import os
 from pathlib import Path
@@ -55,14 +56,32 @@ def session_name(task, run):
     return task['title'][:80]
 
 
+# The Messages API rejects an image over 5 MB of base64; larger ones are still named by path in the prompt for the Read tool.
+INLINE_IMAGE_BYTES = 3_750_000
+
+
+def image_blocks(images):
+    blocks = []
+    for image in images:
+        if image.get('size', 0) > INLINE_IMAGE_BYTES:
+            continue
+        try:
+            data = base64.b64encode(Path(image['path']).read_bytes()).decode('ascii')
+        except OSError:
+            continue
+        blocks.append({'type': 'image', 'source': {'type': 'base64', 'media_type': image['mime'], 'data': data}})
+    return blocks
+
+
 class ClaudeProcess:
     """A single headless turn. Owns the subprocess and translates its stream into board updates."""
 
-    def __init__(self, adapter, task_id, run_id, session_id, args, cwd, prompt, resumed):
+    def __init__(self, adapter, task_id, run_id, session_id, args, cwd, prompt, resumed, images=()):
         self.adapter = adapter
         self.board = adapter.board
         self.task_id, self.run_id, self.session_id = task_id, run_id, session_id
         self.args, self.cwd, self.prompt, self.resumed = args, cwd, prompt, resumed
+        self.images = list(images)
         self.proc = None
         self.lock = threading.Lock()
         self.finished = False
@@ -82,7 +101,7 @@ class ClaudeProcess:
         threading.Thread(target=self._read, daemon=True).start()
         self.send({'type': 'control_request', 'request_id': f'init-{self.run_id}', 'request': {'subtype': 'initialize', 'hooks': {}}})
         self.send({'type': 'user', 'session_id': self.session_id, 'parent_tool_use_id': None,
-                   'message': {'role': 'user', 'content': [{'type': 'text', 'text': self.prompt}]}})
+                   'message': {'role': 'user', 'content': [{'type': 'text', 'text': self.prompt}, *image_blocks(self.images)]}})
 
     def send(self, message):
         with self.lock:
@@ -361,9 +380,13 @@ class ClaudeAdapter(ToolAdapter):
         if effort:
             args += ['--effort', effort]
         args += ['--resume', session_id] if resumed else ['--session-id', session_id, '--name', session_name(task, run)]
+        if (task.get('attachments') or run.get('attachments')) and board.attachments.root.is_dir():
+            # Attachments stay in the board's data folder; let the CLI read them without a permission round trip.
+            # --add-dir is variadic, so it stays the last option.
+            args += ['--add-dir', str(board.attachments.root)]
         # The run can be stopped as soon as the process exists; the session binds after system/init.
         board.set_turn(task_id, run['id'], extra={'permissionMode': PERMISSION_MODE, 'command': args[len(self.command):]})
-        process = ClaudeProcess(self, task_id, run['id'], session_id, args, cwd, board.prompt(task), resumed)
+        process = ClaudeProcess(self, task_id, run['id'], session_id, args, cwd, board.prompt(task), resumed, board.run_images(task))
         self.process = process
         process.start()
 

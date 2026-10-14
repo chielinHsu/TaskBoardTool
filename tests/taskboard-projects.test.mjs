@@ -49,7 +49,7 @@ try{
  await page.evaluate(`refresh()`);await until(()=>page.evaluate(`state.tasks.some(t=>t.title==='同名專案第二路徑')`));
  await setProject('測試專案');
  assert.equal(await page.evaluate(`document.querySelector('#task-cwd').value`),'');
- assert.deepEqual((await page.evaluate(`[...document.querySelector('#task-cwd-options').options].map(o=>o.value)`)).sort(),[config.cwd,config.pickerPath].sort());
+ assert.deepEqual((await page.evaluate(`[...document.querySelectorAll('#task-cwd-options .cwd-option')].map(o=>o.dataset.path)`)).sort(),[config.cwd,config.pickerPath].sort());
  console.log('PASS: 列管, project combobox, auto-loaded folder, new project saved without dispatch, ambiguous paths and poll preserve manual edits');
  // Async picker selection and cancellation preserve the form until Save.
  await page.evaluate(`document.querySelector('#pick-folder').click()`);

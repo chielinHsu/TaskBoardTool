@@ -83,6 +83,7 @@
       if (path === '/api/export') return clone({schemaVersion: 5, demo: true, ...db});
       if (path === '/api/vendor/mermaid') throw Error('展示版不載入外部 Mermaid；Session 心智圖仍可使用。');
       if (path.startsWith('/api/folders/')) throw Error('展示版無法存取本機資料夾；可在欄位輸入範例路徑。');
+      if (path.startsWith('/api/attachments')) throw Error('展示版不上傳附件；本機看板可在需求與後續需求附加檔案或圖片。');
       if (path.startsWith('/api/chat/')) {
         const id = decodeURIComponent(path.split('/').at(-1)), task = db.tasks.find(t => t.workerThreadId === id);
         if (!task) throw Error('沒有這筆範例對話。');

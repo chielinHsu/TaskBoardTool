@@ -26,6 +26,8 @@ from tool_adapters import BoardError, CodexAdapter, TOOLS, TOOL_LABELS, task_too
 from claude_adapter import ClaudeAdapter, resolve_command
 from claude_sessions import strip_reminders
 from folder_picker import FolderPicker
+import attachments as attachment_files
+from attachments import AttachmentStore, task_attachment_ids
 
 ROOT = Path(__file__).resolve().parent
 VENDOR = ROOT / 'vendor'
@@ -105,7 +107,7 @@ STATUSES = ('backlog', 'todo', 'in_progress', 'in_review', 'done')
 STATUS_LABELS = {'backlog': '列管', 'todo': '待辦', 'in_progress': '進行中', 'in_review': '待審核', 'done': '已完成'}
 PRIORITIES = ('low', 'medium', 'high', 'urgent')
 LOG = logging.getLogger('taskboard')
-API_VERSION = '1.9.0'
+API_VERSION = '1.10.0'
 EXPORT_SCHEMA = 5
 EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
 # The five Claude roles of MODEL_ROUTING.md as (model alias, effort); Codex keeps its own default model.
@@ -151,6 +153,7 @@ def decode_task(body):
     task.setdefault('effort', '')
     task.setdefault('plan', None)
     task.setdefault('queuedAt', 0)  # when the card last entered the todo queue; 0 on older cards
+    task.setdefault('attachments', [])
     return task
 
 
@@ -435,6 +438,7 @@ class Board:
         self.model_cache = {}
         self.default_workspace = self.store.directory / 'workspaces'
         self.default_workspace.mkdir(exist_ok=True)
+        self.attachments = AttachmentStore(self.store.directory / 'attachments')
 
     # ----- shared helpers used by adapters -----
     clean = staticmethod(clean_text)
@@ -560,6 +564,8 @@ class Board:
             if not isinstance(labels, list) or len(labels) > 20:
                 raise BoardError('標籤需為清單，最多 20 個。')
             task['labels'] = list(dict.fromkeys(label for value in labels if (label := clean_text(value, '標籤', 80))))
+        if 'attachments' in body:
+            task['attachments'] = self.attachments.resolve(body['attachments'])
         related_ids = self.id_list(task, body.get('relatedIds'), '相關議題') if 'relatedIds' in body else None
         depends_on = self.id_list(task, body.get('dependsOn'), '前置卡片') if 'dependsOn' in body else None
         if depends_on is not None:
@@ -622,7 +628,7 @@ class Board:
         task = {'id': uuid.uuid4().hex[:12], 'title': title, 'description': '', 'project': '個人任務',
                 'cwd': '', 'priority': 'medium', 'status': status, 'sourceId': '', 'sourceTool': '', 'workerThreadId': '',
                 'turnId': '', 'result': '', 'resultUrl': '', 'error': '', 'retryAt': 0,
-                'comments': [], 'runs': [], 'nextRun': None, 'tool': 'codex', 'model': '', 'effort': '', 'labels': [],
+                'comments': [], 'runs': [], 'nextRun': None, 'tool': 'codex', 'model': '', 'effort': '', 'labels': [], 'attachments': [],
                 'plan': body.get('plan') if isinstance(body.get('plan'), dict) else None, 'createdAt': stamp(), 'version': 0}
         for key in ('description', 'project', 'cwd', 'resultUrl'):
             if key in body:
@@ -680,6 +686,7 @@ class Board:
                 # must not be replayed by the status event or keep the card flagged. Runs keep their own error.
                 task['error'], task['retryAt'] = '', 0
             saved = self.store.put(task, related_ids, depends_on)
+            self.attachments.delete(task_attachment_ids(previous) - task_attachment_ids(saved))
             if saved['status'] == 'done' and previous['status'] != 'done':
                 saved['released'] = [t['id'] for t in self.release_dependents(task_id)]
             return saved
@@ -696,6 +703,7 @@ class Board:
     def followup(self, task_id, body):
         text = clean_text(body.get('text', ''), '後續需求')
         thread_id = clean_text(body.get('threadId', ''), '對話 ID', 200)
+        attached = self.attachments.resolve(body.get('attachments', []))
         if not text:
             raise BoardError('請填寫尚未符合需求的地方或後續需求。')
         with self.lock:
@@ -744,9 +752,9 @@ class Board:
                 cwd = (previous or {}).get('cwd') or (self.chat(tool, thread_id) or {}).get('cwd') or cwd
             self.validate_workspace(cwd)
             task['nextRun'] = {'threadId': thread_id, 'text': text, 'cwd': cwd, 'kind': kind, 'tool': tool, 'model': model,
-                               'effort': effort, 'fromTool': previous_tool if kind == 'handoff' else ''}
-            task['comments'].append({'text': text, 'at': stamp(), 'author': '你',
-                                     'kind': 'followup', 'threadId': thread_id, 'tool': tool})
+                               'effort': effort, 'fromTool': previous_tool if kind == 'handoff' else '', 'attachments': attached}
+            task['comments'].append({'text': text, 'at': stamp(), 'author': '你', 'kind': 'followup',
+                                     'threadId': thread_id, 'tool': tool, 'attachments': attached})
             task['tool'], task['model'], task['effort'] = tool, model, effort
             task['status'], task['error'], task['retryAt'], task['queuedAt'] = 'todo', '', 0, queue_stamp()
             saved = self.store.put(task)
@@ -1197,12 +1205,30 @@ class Board:
         if run.get('kind') in ('followup', 'new_session', 'handoff'):
             handoff = (f"\n\n接手說明：這項需求先前由 {TOOL_LABELS.get(run.get('fromTool', ''), '另一個工具')} 的對話處理，"
                        "以下只是回報摘要，並非原對話的完整紀錄；請以工作資料夾的實際內容為準。") if run.get('kind') == 'handoff' else ''
-            followup = f"\n\n本次後續需求（優先處理）：\n{run['request']}{handoff}\n\n先前執行回報：\n{history or '無'}"
-        return (f"請執行任務 {task['id']}：{task['title']}\n\n需求：\n{task['description'] or task['title']}{followup}\n\n"
+            run_files = attachment_files.describe(self.attachments, run.get('attachments') or [])
+            run_files = f"\n\n本次後續需求的附件（請直接讀取）：\n{run_files}" if run_files else ''
+            followup = f"\n\n本次後續需求（優先處理）：\n{run['request']}{run_files}{handoff}\n\n先前執行回報：\n{history or '無'}"
+        brief_files = attachment_files.describe(self.attachments, task.get('attachments') or [])
+        brief_files = f"\n\n需求附件（請直接讀取）：\n{brief_files}" if brief_files else ''
+        return (f"請執行任務 {task['id']}：{task['title']}\n\n需求：\n{task['description'] or task['title']}{brief_files}{followup}\n\n"
                 f"使用者補充：\n{notes or '無'}\n\n"
                 "請遵守工作資料夾中的 AGENTS.md 與既有專案規範。完成後用繁體中文回報成果、驗證方式與未完成事項。"
                 "需要發布、合併或外部傳送時先取得使用者的明確授權。只有確實完成並驗證才回報完成；無法完成就說明阻礙。"
                 "成果會先進入待審核，由使用者驗收。不要直接修改任務看板資料庫。")
+
+    def run_images(self, task):
+        """Image attachments handed to the tool as native image input for the latest run. A continued conversation
+        already saw the brief's images, so only its own follow-up images are sent again."""
+        run = task['runs'][-1] if task.get('runs') else {}
+        items = list(run.get('attachments') or [])
+        if run.get('kind') != 'followup':
+            items = list(task.get('attachments') or []) + items
+        images = []
+        for item in items:
+            path = self.attachments.path(item)
+            if item.get('mime') in attachment_files.IMAGE_TYPES and path.is_file():
+                images.append({**item, 'path': str(path)})
+        return images
 
     def start(self, task_id, force=False):
         """Dispatch now. `force` is the person's explicit override of unfinished blockers (recorded on the card);
@@ -1227,7 +1253,7 @@ class Board:
                            'kind': previous['kind'], 'tool': retry_tool,
                            'model': task.get('model', '') if same_tool else previous.get('model', ''),
                            'effort': task.get('effort', '') if same_tool else previous.get('effort', ''),
-                           'fromTool': previous.get('fromTool', '')}
+                           'fromTool': previous.get('fromTool', ''), 'attachments': previous.get('attachments', [])}
             if task['sourceId'] and not task['description'].strip() and not pending:
                 raise BoardError('請先補上這次要執行的需求；聊天標題不會直接當成新指令。')
             blocked = self.blockers(task)
@@ -1252,7 +1278,7 @@ class Board:
             # Snapshot before clearing the latest report; previous runs remain immutable.
             task['runs'].append({'id': uuid.uuid4().hex[:12], 'kind': (pending or {}).get('kind', 'initial' if not task['runs'] else 'retry'),
                                  'threadId': thread_id, 'turnId': '', 'cwd': cwd, 'tool': tool, 'model': model, 'effort': effort,
-                                 'fromTool': (pending or {}).get('fromTool', ''),
+                                 'fromTool': (pending or {}).get('fromTool', ''), 'attachments': (pending or {}).get('attachments', []),
                                  'request': pending['text'] if pending else task['description'] or task['title'],
                                  'result': '', 'error': '', 'status': 'running', 'startedAt': stamp()})
             task['nextRun'] = None
@@ -1363,9 +1389,9 @@ class Handler(BaseHTTPRequestHandler):
         if origin and origin not in (f'http://127.0.0.1:{self.server.server_port}', f'http://localhost:{self.server.server_port}'):
             raise BoardError('Origin 不允許。', 403)
 
-    def body(self):
+    def body(self, limit=300000):
         size = int(self.headers.get('Content-Length', '0'))
-        if size < 0 or size > 300000:
+        if size < 0 or size > limit:
             raise BoardError('請求太大。', 413)
         value = json.loads(self.rfile.read(size) or '{}')
         if not isinstance(value, dict):
@@ -1420,6 +1446,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply({'schemaVersion': EXPORT_SCHEMA, 'exportedAt': stamp(), 'tasks': self.board.store.all()})
             if path.startswith('/api/chat/'):
                 return self.reply(self.board.read_chat(path.split('/')[-1], tool))
+            if path.startswith('/api/attachments/'):
+                return self.reply(self.board.attachments.read(path.split('/')[-1]))
+        if path == '/api/attachments' and method == 'POST':
+            return self.reply(self.board.attachments.save(self.body(attachment_files.MAX_BODY)), 201)
         body = self.body() if method in ('POST', 'PATCH') else {}
         if path == '/api/folders/select' and method == 'POST':
             return self.reply(self.server.folder_picker.start(body.get('initialPath', '')), 202)
@@ -1460,8 +1490,9 @@ class Handler(BaseHTTPRequestHandler):
                     with self.board.lock:
                         if self.board.active_id == task_id:
                             raise BoardError('請先停止執行中的任務。', 409)
-                        self.board.store.get(task_id)
+                        attached = task_attachment_ids(self.board.store.get(task_id))
                         self.board.store.delete(task_id)
+                        self.board.attachments.delete(attached)
                     return self.reply({'ok': True})
             if len(parts) == 5 and method == 'POST':
                 if parts[4] == 'start':
