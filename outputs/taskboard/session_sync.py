@@ -6,6 +6,8 @@ from pathlib import Path, PureWindowsPath
 import time
 
 SCRATCH_PROJECT = 'Claude 暫存工作區'
+# A Claude App session's project is its sidebar group; one filed under no group is 未分組 (never its folder).
+UNGROUPED = '未分組'
 
 
 def project_from_cwd(cwd, fallback='既有聊天'):
@@ -90,7 +92,7 @@ def session_card(chat, stale=False, tool='codex'):
     """Derived read-only card. Codex ids keep the legacy `session:` prefix; other tools add their name."""
     signal = chat['sessionStatus']
     return {'id': ('session:' if tool == 'codex' else f'session:{tool}:') + chat['id'], 'title': chat['title'], 'description': '',
-            'project': chat.get('project') or project_from_cwd(chat['cwd']), 'cwd': chat['cwd'],
+            'project': chat.get('project') or (UNGROUPED if tool == 'claude' else project_from_cwd(chat['cwd'])), 'cwd': chat['cwd'],
             'priority': 'medium', 'status': 'backlog' if stale else signal['status'],
             'sourceId': chat['id'], 'sourceTool': tool, 'tool': tool, 'model': chat.get('model', ''), 'labels': [],
             'desktopId': chat.get('desktopId', ''), 'workerThreadId': '', 'turnId': '', 'result': '', 'resultUrl': '',

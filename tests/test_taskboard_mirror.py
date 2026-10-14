@@ -39,7 +39,7 @@ class MirrorTests(unittest.TestCase):
         self.assertEqual((task['status'], task['priority'], task['tool'], task['title'], task['description'], task['cwd'],
                           task['sourceId'], task['sourceTool'], task['workerThreadId'], task['turnId'], task['project']),
                          ('in_progress', 'high', 'claude', '幫我裝任務看板', '幫我裝任務看板\n要能在 App 開啟', str(self.root),
-                          SESSION, 'claude', SESSION, 'turn-1', self.root.name))
+                          SESSION, 'claude', SESSION, 'turn-1', '未分組'))  # a session in no App group, never its folder
         run = task['runs'][-1]
         self.assertEqual((run['kind'], run['status'], run['threadId'], run['turnId'], run['request'], run['model'], run['tool']),
                          ('mirror', 'running', SESSION, 'turn-1', '幫我裝任務看板\n要能在 App 開啟', 'opus', 'claude'))
@@ -138,6 +138,7 @@ class MirrorTests(unittest.TestCase):
         self.assertEqual(self.mirror(event='complete', turnId='t2', answer='好')['task']['title'], '看板上的標題')
 
     def test_worktree_and_scratch_folders_name_the_repository_not_the_random_folder(self):
+        # project_from_cwd still names Codex session cards; Claude session cards take App groups (see the next test).
         from session_sync import SCRATCH_PROJECT, project_from_cwd, session_card
         self.assertEqual(project_from_cwd(r'D:\ClaudeWork\DiskAnalyzer\.claude\worktrees\calm-a1'), 'DiskAnalyzer')
         self.assertEqual(project_from_cwd(r'D:\Repo\.Claude\Worktrees\calm-a1' + '\\'), 'Repo')
@@ -148,24 +149,75 @@ class MirrorTests(unittest.TestCase):
         worktree.mkdir(parents=True)
         chat = {'id': SESSION, 'tool': 'claude', 'title': 'App 標題', 'cwd': str(worktree), 'updatedAt': 1, 'createdAt': 1, 'model': '',
                 'desktopId': 'local_x', 'origin': 'desktop', 'project': '', 'sessionStatus': {'status': 'backlog', 'label': '', 'basis': 'transcript'}}
-        self.assertEqual(session_card(chat, tool='claude')['project'], 'Repo')
-        task = self.mirror(event='start', turnId='t1', text='在 worktree 裡修', cwd=str(worktree))['task']
-        self.assertEqual(task['project'], 'Repo')
-        # A card mirrored before this kept the folder's random name; the next session sync moves it to the repository.
-        legacy = self.board.store.get(task['id'])
-        legacy['project'] = 'calm-a1'
-        self.board.store.put(legacy)
+        self.assertEqual(session_card(chat, tool='codex')['project'], 'Repo')
+        self.assertEqual(session_card(chat, tool='claude')['project'], '未分組')
+        self.assertEqual(session_card({**chat, 'project': '交易工具'}, tool='claude')['project'], '交易工具')
+
+    def test_claude_session_cards_take_the_app_group_or_ungrouped_and_old_cards_follow_unless_edited(self):
+        worktree = self.root / 'Repo' / '.claude' / 'worktrees' / 'calm-a1'
+        worktree.mkdir(parents=True)
+        chat = {'id': SESSION, 'tool': 'claude', 'title': 'App 標題', 'cwd': str(worktree), 'updatedAt': 1, 'createdAt': 1, 'model': '',
+                'desktopId': 'local_x', 'origin': 'desktop', 'project': '', 'sessionStatus': {'status': 'backlog', 'label': '', 'basis': 'transcript'}}
         self.board.adapters['claude'].list_sessions = lambda: ([dict(chat)], False)
-        self.board.claude_list()
+        task = self.mirror(event='start', turnId='t1', text='在 worktree 裡修', cwd=str(worktree))['task']
+        self.assertEqual((task['project'], task['projectSource']), ('未分組', 'app'))
+        # Before the App's groups ever arrived, unknown is not ungrouped: a sync moves nothing.
+        legacy = self.board.store.get(task['id'])
+        legacy['project'] = 'calm-a1'  # mirrored by older code: the worktree's random folder name, no projectSource
+        del legacy['projectSource']
+        legacy = self.board.store.put(legacy)
+        self.board.claude_list()  # (the card still takes the App's title meanwhile)
+        self.assertEqual(self.board.store.get(task['id'])['project'], 'calm-a1')
+        self.assertNotIn('projectSource', self.board.store.get(task['id']))
+        # The groups arrive: the old automatic project follows the session's group at once…
+        self.board.set_claude_groups({'sessions': [{'sessionId': 'local_x', 'group': {'id': 'g1', 'name': '交易工具'}}]})
         moved = self.board.store.get(task['id'])
-        self.assertEqual(moved['project'], 'Repo')
+        self.assertEqual((moved['project'], moved['projectSource']), ('交易工具', 'app'))
         self.board.claude_list()  # already followed: nothing new is written
         self.assertEqual(self.board.store.get(task['id'])['version'], moved['version'])
-        # A project typed on the board (or an App group) is the card's own and never follows the folder.
-        edited = self.board.update(task['id'], {'version': moved['version'], 'project': '我的分類', 'status': 'in_progress'})
+        # …and becomes 未分組 when the session leaves its group.
+        self.board.set_claude_groups({'sessions': []})
+        self.assertEqual(self.board.store.get(task['id'])['project'], '未分組')
+        self.assertEqual(self.board.state()['claudeGroupsError'], '')
+        # A failed group read keeps the last mapping and is shown, not applied as ungrouped.
+        self.board.set_claude_groups({'sessions': [{'sessionId': 'local_x', 'group': {'id': 'g2', 'name': '股魚魚缸網頁'}}]})
+        # Another session's failed read does not mark a mapping refreshed within ten minutes as stale…
+        self.assertTrue(self.board.set_claude_groups({'error': 'App 群組讀取失敗：connector unavailable'})['ignored'])
+        self.assertEqual(self.board.state()['claudeGroupsError'], '')
+        # …an older one it does.
+        self.board.store.set_setting('claudeGroupsAt', server.stamp() - server.GROUPS_FRESH_SECONDS - 1)
+        self.board.set_claude_groups({'error': 'App 群組讀取失敗：connector unavailable'})
+        self.assertEqual(self.board.state()['claudeGroupsError'], 'App 群組讀取失敗：connector unavailable')
+        self.board.claude_list()
+        self.assertEqual(self.board.store.get(task['id'])['project'], '股魚魚缸網頁')
+        # A project typed on the board is the card's own and never follows the App again.
+        current = self.board.store.get(task['id'])
+        edited = self.board.update(task['id'], {'version': current['version'], 'project': '我的分類', 'status': 'in_progress'})
+        self.assertEqual(edited['projectSource'], 'manual')
+        self.board.set_claude_groups({'sessions': []})
         self.board.claude_list()
         self.assertEqual(self.board.store.get(task['id'])['project'], '我的分類')
         self.assertEqual(self.board.store.get(task['id'])['version'], edited['version'])
+        self.assertEqual(self.board.state()['claudeGroupsError'], '')  # a successful read clears the error
+
+    def test_an_old_card_with_a_hand_typed_project_keeps_it(self):
+        chat = {'id': SESSION, 'tool': 'claude', 'title': 'App 標題', 'cwd': str(self.root), 'updatedAt': 1, 'createdAt': 1, 'model': '',
+                'desktopId': 'local_x', 'origin': 'desktop', 'project': '', 'sessionStatus': {'status': 'backlog', 'label': '', 'basis': 'transcript'}}
+        self.board.adapters['claude'].list_sessions = lambda: ([dict(chat)], False)
+        task = self.mirror(event='start', turnId='t1', text='需求', cwd=str(self.root))['task']
+        legacy = self.board.store.get(task['id'])
+        legacy['project'] = '我的分類'
+        del legacy['projectSource']
+        self.board.store.put(legacy)
+        self.board.claude_list()
+        self.board.set_claude_groups({'sessions': [{'sessionId': 'local_x', 'group': {'id': 'g1', 'name': '交易工具'}}]})
+        kept = self.board.store.get(task['id'])
+        self.assertEqual((kept['project'], kept['projectSource']), ('我的分類', 'manual'))
+        # a Codex card or a card made on the board is never touched
+        codex = self.board.create({'title': 'Codex 卡', 'tool': 'codex'})
+        manual = self.board.create({'title': '手動 Claude 卡', 'tool': 'claude'})
+        self.board.claude_list()
+        self.assertEqual((self.board.store.get(codex['id'])['project'], self.board.store.get(manual['id'])['project']), ('個人任務', '個人任務'))
 
     def test_a_card_titled_before_title_sources_existed_follows_the_app_only_while_untouched(self):
         self.board.read_chat = lambda thread_id, tool='codex': {'turns': [

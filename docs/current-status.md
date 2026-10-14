@@ -1,5 +1,15 @@
 # 目前狀態
 
+## 2026-10-14：窗格下拉選單不再自己收起；Claude 卡片無群組為「未分組」
+
+- 問題 1（窗格 Select 打開後很快收起）：根因 VERIFIED。`refresh()` 每 5 秒把新物件（`updatedAt` 每次不同）寫入 snapshot，每次寫入都會重畫讀過它的窗格（型別檔 `$.state.set`：the sites that read it while drawing are drawn again）。新增回歸測試在修正前失敗：同一份看板輪詢 6 次寫了 6 次 snapshot（Expected 1, Received 7）。修正：`publish()` 只在內容（扣掉 updatedAt）改變時寫；新增表單開著時延後套用（核准請求、連線狀態改變例外），收起表單、建立後或按「重新整理」立即套用；表單內加靜態說明。型別檔的 Select 沒有開啟／關閉狀態可用。
+- 問題 2（未分組）：依使用者決定，綁定 Claude App session 的卡片（鏡像、唯讀追蹤、session 匯入）沒有側欄群組時專案為「未分組」；匯入計畫未給專案的 Claude 事項也是「未分組」；Codex 與手動卡仍為「個人任務」。新增 `projectSource` app／manual，舊卡（專案為資料夾／repository 名、個人任務、未分組或群組名）自動跟隨群組；看板上改過即不再動；群組首次送達前不改（ADR-024，API 1.11.0）。index.html 與窗格的退回值改為依工具（`projectOf`）。
+- 群組同步從未送達的根因 VERIFIED：mod 一次 `list_sessions({limit:500})` 的結果 178,962 字，引擎換成「Output has been saved to …」文字（isError=false），`JSON.parse` 失敗被 catch 吞掉。改為 `list_groups`＋逐群組 `list_sessions`；錯誤送 `{error}` 顯示於橫幅／窗格；每回合也同步。另發現並修正 `import_plan` 回傳 `{content,isError}` 不符引擎輸出格式（引擎要求字串或陣列），改回傳字串。
+- VERIFIED：Python 84（新增／改寫：群組跟隨與錯誤、手動保留、計畫未分組、session 匯入未分組）；`claude plugin validate` 通過、`claude plugin test` 12/12（新增：輪詢不重寫、表單延後與核准例外、未分組選項、逐群組讀取、過大結果與連接器錯誤、每回合同步）；以變異測試確認拿掉延後條件時測試失敗；`node scripts/ci/check.mjs` 通過（Node 30、路由 74、展示建置）；inline script 解析；隔離服務（47999）網頁：Claude 計畫卡「未分組」、Codex 計畫卡與手動 Claude 卡「個人任務」、專案篩選「未分組 · Claude」、0 console 錯誤。setup-claude-mod.mjs 已同步全域副本（--check 一致）；熱重載後真實 App 內 mod 讀到 39 群組／200 sessions，正式服務收到 `POST /api/claude-groups` 200（舊版伺服器，只更新唯讀卡的群組名）。
+- 正式資料唯讀試算（新伺服器規則套用後）：52 張已保存 Claude 卡會跟隨（AutoCadCreated→Qt_AutoCadCreated 18、TaskBoardTool→小工具開發-任務看板 14、DiskAnalyzer→小工具開發-硬碟容量檢查 5、SecurePackStudio→小工具開發-加密壓縮打包 3、6 張→未分組、3 張 worktree 隨機名→Qt_AutoCadCreated…），0 張手動專案，3 張 session 不在索引中不動。
+- NOT VERIFIED：真實 Claude App 窗格內打開「既有專案」／「負責模型」下拉選單停留 10 秒以上不收起（無法操作 App 原生窗格，需使用者實測；全域 mod 已熱重載）；正式服務仍為 1.10.0，伺服器端「未分組」與舊卡跟隨待重啟後生效；網頁橫幅錯誤文字（隔離服務 --no-connect 不跑 session 同步，橫幅不顯示該列；`claudeGroupsError` 欄位由 API 確認）。`tests/taskboard-projects.test.mjs` 需專用 Codex App profile，worktree 無 `.data/app-integration.json` 未執行。
+- 觀察：除錯時暫時在 mod 加了診斷工具並同步到全域副本，已移除並重新同步（全域副本與來源一致、無 diag 字樣）；備份在 work/claude-mod-backups。
+
 ## 2026-10-14：Claude worktree／暫存資料夾不再成為專案名
 
 - 原因：Claude 卡片沒有 App 群組時以 cwd 的資料夾名當專案；App worktree（`<repo>\.claude\worktrees\<隨機名>`）與暫存工作區（`…\scratch-workspaces\…\scratch-…`）的資料夾名是隨機標籤，專案下拉因此多出約 30 個無意義項目。

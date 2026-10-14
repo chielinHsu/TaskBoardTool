@@ -119,6 +119,74 @@ test('pane shows tasks with tool badges and approvals; buttons call the board AP
   }
 })
 
+test('polling an unchanged board writes no snapshot, so an open Select is not redrawn shut; a change still lands', async ($, on) => {
+  const clock = mock.clock(on)
+  let state: any = STATE
+  let polls = 0
+  on('http.fetch', async (_$, e) => {
+    if (e.url.endsWith('/api/state')) polls++
+    const data = e.url.endsWith('47824/') ? PAGE : e.url.endsWith('/api/state') ? JSON.stringify(state) : '{}'
+    return { value: { status: 200, ok: true, headers: {}, text: data } }
+  })
+  // Every write of an atom the pane read redraws the pane; count the writes of the board snapshot.
+  const writes: string[] = []
+  on('state.set', async (_$, e: any, next: any) => { writes.push(String(e.key)); return next(e) })
+  on('ui.open', () => ({ value: { isPlaced: true } } as any))
+  on('command.run', () => ({ text: '' } as any))
+  const ui = await $.ui.mount({ plugin: 'taskboard-pane', surface: 'desktop', component: 'Pane', requestId: 'taskboard', props: PANE_PROPS,
+    viewport: { columns: 120, rows: 60, isFullscreen: true } })
+  await $.command.run({ command: 'taskboard', args: '' } as any)
+  await clock.settle()
+  const firstWrites = writes.filter(k => k === 'snapshot').length
+  expect(firstWrites).toBe(1)
+  await clock.advance(30000) // six polls of the same board
+  expect(polls).toBeGreaterThan(5)
+  expect(writes.filter(k => k === 'snapshot').length).toBe(firstWrites)
+  // A new card (or a new approval) is a change: it is written and drawn.
+  state = { ...STATE, tasks: [...STATE.tasks, { id: 't9', title: '輪詢後的新卡片', status: 'backlog', priority: 'low', tool: 'codex', version: 1 }] }
+  await clock.advance(5000)
+  expect(writes.filter(k => k === 'snapshot').length).toBe(firstWrites + 1)
+  expect(Boolean(await ui.find({ text: /輪詢後的新卡片/ }))).toBe(true)
+  // While the new-task form is open, the board's changes wait; a new approval does not.
+  await $.ui.press({ plugin: 'taskboard-pane', key: 'new-card', surface: 'desktop' })
+  const opened = writes.filter(k => k === 'snapshot').length
+  state = { ...state, tasks: [...state.tasks, { id: 't10', title: '表單開著時的新卡片', status: 'backlog', priority: 'low', tool: 'codex', version: 1 }] }
+  await clock.advance(15000)
+  expect(writes.filter(k => k === 'snapshot').length).toBe(opened)
+  expect(Boolean(await ui.find({ text: /表單開著時的新卡片/ }))).toBe(false)
+  expect(Boolean(await ui.find({ key: 'existing-project' }))).toBe(true)
+  state = { ...state, approvals: [...STATE.approvals, { id: 'claude:perm-2', tool: 'claude', method: 'claude/can_use_tool', params: { toolName: 'Write', input: {} } }] }
+  await clock.advance(5000)
+  expect(Boolean(await ui.find({ text: /請求核准工具：Write/ }))).toBe(true)
+  await clock.advance(10000)
+  const beforeClose = writes.filter(k => k === 'snapshot').length
+  await $.ui.press({ plugin: 'taskboard-pane', key: 'cancel-card', surface: 'desktop' })
+  expect(writes.filter(k => k === 'snapshot').length).toBe(beforeClose) // already drawn with the approval: nothing new
+  await ui.unmount()
+})
+
+test('a Claude card without a project is listed as 未分組; other cards stay 個人任務', async ($, on) => {
+  mock.clock(on)
+  const state = { ...STATE, tasks: [
+    { id: 'c1', title: '沒有群組的 Claude 卡片', status: 'backlog', tool: 'claude', project: '' },
+    { id: 'c2', title: '沒有專案的 Codex 卡片', status: 'backlog', tool: 'codex', project: '' },
+    { id: 'c3', title: '群組卡片', status: 'backlog', tool: 'claude', project: '交易工具' },
+  ] }
+  on('http.fetch', async (_$, e) => {
+    const data = e.url.endsWith('47824/') ? PAGE : e.url.endsWith('/api/state') ? JSON.stringify(state) : '{"models":[]}'
+    return { value: { status: 200, ok: true, headers: {}, text: data } }
+  })
+  const ui = await $.ui.mount({ plugin: 'taskboard-pane', surface: 'desktop', component: 'Pane', requestId: 'taskboard', props: PANE_PROPS,
+    viewport: { columns: 120, rows: 60, isFullscreen: true } })
+  await $.ui.press({ plugin: 'taskboard-pane', key: 'refresh', surface: 'desktop' })
+  await $.ui.press({ plugin: 'taskboard-pane', key: 'new-card', surface: 'desktop' })
+  const values = ((await ui.find({ key: 'existing-project' }))?.props.options ?? []).map((o: any) => o.value)
+  expect(values.includes('未分組')).toBe(true)
+  expect(values.includes('個人任務')).toBe(true)
+  expect(values.includes('交易工具')).toBe(true)
+  await ui.unmount()
+})
+
 test('an unreachable board service is reported in the pane instead of failing the draw', async ($, on) => {
   mock.clock(on)
   on('http.fetch', async () => { throw new Error('ECONNREFUSED 127.0.0.1:47824') })
@@ -147,16 +215,27 @@ test('the import_plan tool files a plan through the board API and reports the cr
   expect(JSON.stringify(out)).toContain('a → b')
 })
 
-test('the mod relays Claude App sidebar groups to the board as session projects', async ($, on) => {
+// The App's two connectors, answered from memory: list_groups, then list_sessions per group.
+const GROUPS = [{ id: 'cg-1', name: '交易工具', session_count: 1 }, { id: 'cg-2', name: '股魚魚缸網頁', session_count: 1 }, { id: 'cg-3', name: '空群組', session_count: 0 }]
+const MEMBERS: Record<string, any[]> = {
+  'cg-1': [{ sessionId: 'local_a', title: 'A', group: { id: 'cg-1', name: '交易工具' } }],
+  'cg-2': [{ sessionId: 'local_c', title: 'C', group: { id: 'cg-2', name: '股魚魚缸網頁' } }],
+}
+const text = (value: unknown, isError = false) => ({ value: { isError, content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] } })
+function appConnectors(on: any, calls: any[] = []) {
+  on('mcp.call', async (_$: any, e: any) => {
+    calls.push(e)
+    if (e.server === 'ccd_sidebar' && e.tool === 'list_groups') return text(GROUPS)
+    if (e.server === 'ccd_session_mgmt' && e.tool === 'list_sessions') return text(MEMBERS[e.args.group] ?? [])
+    return text('unknown tool', true)
+  })
+}
+
+test('the mod relays Claude App sidebar groups to the board as session projects, one group at a time', async ($, on) => {
   const clock = mock.clock(on)
   const posted: string[] = []
-  on('mcp.call', async (_$, e) => {
-    if (e.server === 'ccd_session_mgmt' && e.tool === 'list_sessions') return { value: { isError: false, content: [{ type: 'text', text: JSON.stringify([
-      { sessionId: 'local_a', title: 'A', group: { id: 'cg-1', name: '交易工具' } },
-      { sessionId: 'local_b', title: 'B', group: null },
-      { sessionId: 'local_c', title: 'C', group: { id: 'cg-2', name: '股魚魚缸網頁' } }]) }] } }
-    return { value: { isError: true, content: [] } }
-  })
+  const calls: any[] = []
+  appConnectors(on, calls)
   on('http.fetch', async (_$, e) => {
     if (e.url.endsWith('47824/')) return { value: { status: 200, ok: true, headers: {}, text: PAGE } }
     if (e.url.endsWith('/api/claude-groups')) { posted.push(e.init?.body || ''); return { value: { status: 200, ok: true, headers: {}, text: '{"ok":true}' } } }
@@ -171,9 +250,64 @@ test('the mod relays Claude App sidebar groups to the board as session projects'
   const body = JSON.parse(posted[0])
   expect(body.sessions.map((s: any) => s.sessionId)).toEqual(['local_a', 'local_c'])
   expect(body.sessions[0].group.name).toBe('交易工具')
+  // never one list_sessions for every session: its result is too large and comes back as a "saved to a file" note
+  const reads = calls.filter(c => c.tool === 'list_sessions')
+  expect(reads.map(c => c.args.group)).toEqual(['cg-1', 'cg-2']) // the empty group is not read
+  expect(reads.every(c => c.args.limit >= 1 && c.args.limit <= 100)).toBe(true)
   await $.ui.press({ plugin: 'taskboard-pane', key: 'refresh', surface: 'desktop' })
-  expect(posted.length).toBe(1) // unchanged mapping is not re-sent
+  expect(posted.length).toBe(1) // unchanged mapping is not re-sent…
+  await clock.advance(300000)
+  await $.ui.press({ plugin: 'taskboard-pane', key: 'refresh', surface: 'desktop' })
+  expect(posted.length).toBeGreaterThan(1) // …until five minutes on, as proof the groups are still fresh
   await ui.unmount()
+})
+
+test('a group read that fails reaches the board as an error, never as all-ungrouped', async ($, on) => {
+  const clock = mock.clock(on)
+  const posted: any[] = []
+  let answer: (e: any) => any = () => text('No app window has reported groups yet', true)
+  on('mcp.call', async (_$, e) => answer(e))
+  on('http.fetch', async (_$, e) => {
+    if (e.url.endsWith('/api/claude-groups')) posted.push(JSON.parse(e.init?.body || '{}'))
+    return { value: { status: 200, ok: true, headers: {}, text: e.url.endsWith('47824/') ? PAGE : e.url.endsWith('/api/state') ? JSON.stringify(STATE) : '{}' } }
+  })
+  const ui = await $.ui.mount({ plugin: 'taskboard-pane', surface: 'desktop', component: 'Pane', requestId: 'taskboard', props: PANE_PROPS,
+    viewport: { columns: 100, rows: 40, isFullscreen: true } })
+  await $.ui.press({ plugin: 'taskboard-pane', key: 'refresh', surface: 'desktop' })
+  await clock.settle()
+  expect(posted.length).toBe(1)
+  expect(posted[0].sessions).toBe(undefined)
+  expect(posted[0].error).toContain('No app window has reported groups yet')
+  // a result too large for the engine arrives as plain text, not JSON: an error, not an empty mapping
+  answer = e => e.tool === 'list_groups' ? text(GROUPS) : text('Error: result (178,962 characters across 4,852 lines) exceeds maximum allowed tokens. Output has been saved to C:\\x.txt')
+  await $.ui.press({ plugin: 'taskboard-pane', key: 'refresh', surface: 'desktop' })
+  expect(posted.length).toBe(2)
+  expect(posted[1].sessions).toBe(undefined)
+  expect(posted[1].error).toContain('exceeds maximum allowed tokens')
+  // a session without the App's connectors (a terminal CLI) has nothing to tell and says nothing
+  answer = () => { throw new Error('no MCP server named ccd_sidebar') }
+  await $.ui.press({ plugin: 'taskboard-pane', key: 'refresh', surface: 'desktop' })
+  expect(posted.length).toBe(2)
+  await ui.unmount()
+})
+
+test('a turn relays the App groups too, at most once a minute, so they arrive while the pane is closed', async ($, on) => {
+  const clock = mock.clock(on)
+  const calls: any[] = []
+  appConnectors(on, calls)
+  on('http.fetch', async (_$, e) => ({ value: { status: 200, ok: true, headers: {}, text: e.url.endsWith('47824/') ? PAGE : e.url.endsWith('/api/state') ? JSON.stringify(STATE) : '{"mirrored":true}' } }))
+  on('session.id', () => ({ value: 'sess-groups' }))
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  const groupReads = () => calls.filter(c => c.tool === 'list_groups').length
+  await $.turn.start({ text: '第一句', turnId: 'turn-1' })
+  await clock.settle()
+  await $.turn.start({ text: '第二句', turnId: 'turn-2' })
+  await clock.settle()
+  expect(groupReads()).toBe(1)
+  await clock.advance(61000)
+  await $.turn.start({ text: '第三句', turnId: 'turn-3' })
+  await clock.settle()
+  expect(groupReads()).toBe(2)
 })
 
 test('turns typed in this session are mirrored to the board as the runs of one card', async ($, on) => {
