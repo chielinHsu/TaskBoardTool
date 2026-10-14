@@ -5,7 +5,8 @@
 - 原因：Claude 卡片沒有 App 群組時以 cwd 的資料夾名當專案；App worktree（`<repo>\.claude\worktrees\<隨機名>`）與暫存工作區（`…\scratch-workspaces\…\scratch-…`）的資料夾名是隨機標籤，專案下拉因此多出約 30 個無意義項目。
 - 修改：session_sync.py 新增 `project_from_cwd()`（PureWindowsPath 解析，非 Windows 主機也能拆 Windows 路徑）：worktree 取 repository 名、暫存工作區為「Claude 暫存工作區」；唯讀同步卡、匯入卡、鏡像新卡共用。`Board.follow_cwd_project()` 在每次 Claude session 同步時，把專案仍等於資料夾原名的舊鏡像卡改為 repository 名；看板上改過或 App 群組給的專案不動。
 - VERIFIED：Python 82（新增 mirror 測試 1 項：路徑解析、唯讀卡、鏡像新卡、舊卡跟隨一次且不重複寫入、手動專案不動）。以正式看板資料唯讀試算：20 張已保存卡（AutoCadCreated 12、AlgoParamFineTune 1、DiskAnalyzer 2、SecurePackStudio 2、TaskBoardTool 1、暫存 1…）與 22 張唯讀卡皆對應到正確 repository。
-- NOT VERIFIED：正式服務尚未重啟套用；20 張已保存卡會在重啟後第一次 Claude 同步改寫專案欄位（version 增加，開著的詳情草稿儲存會收到 409）。
+- 同日續：PR #3 經 CI 三項通過後自動合併（50632a8），使用者授權後重啟正式服務。VERIFIED：重啟前只有 App 鏡像中的卡片、無看板派工；重啟後第一次 Claude 同步，worktree／暫存資料夾名的專案為 0 張，已保存卡改為 AutoCadCreated 13、SecurePackStudio 2、DiskAnalyzer 2、AlgoParamFineTune 1、TaskBoardTool 1、Claude 暫存工作區 1；專案下拉由 69 項降為 38 項。
+- 觀察：合併提交標題與內文符合格式，但 `gh pr merge --author-email chielin0025@hotmail.com` 未生效，作者仍為 GitHub noreply（推測該信箱未在 GitHub 驗證或帳號開啟隱藏信箱），committer 為 GitHub。前次背景 start.ps1 於舊服務停止時才結束，證實是服務持有輸出管道；以背景執行則正常結束。
 
 ## 2026-10-14：專案篩選、資料夾選擇與附件
 
