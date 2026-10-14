@@ -1,5 +1,15 @@
 # 目前狀態
 
+## 2026-10-14：專案篩選、資料夾選擇與附件
+
+- 專案篩選：「全部工具」時 Codex 群組 21 項排在 Claude 群組前，下拉第一屏只看得到 Codex，且同名專案分屬兩組（選哪組都篩兩種工具）。改為每個專案一項、統一排序並標註使用的工具；選單一工具時只列該工具專案。
+- 資料夾選擇：舊 FolderBrowserDialog 只有樹狀清單、不能輸入路徑；改為新式 IFileOpenDialog（FOS_PICKFOLDERS），網址列可輸入／貼上路徑，擁有者視窗 TopMost 並嘗試取得前景。工作資料夾欄改為可換行的文字框，「用過的資料夾」以完整路徑按鈕列出（原 datalist 在 270px 欄位截斷）。
+- 附件（ADR-023）：需求與驗收條件、後續需求、聊天紀錄的延續對話可選檔、拖放、貼上截圖；詳情、留言、session 第一次提問顯示附件縮圖與下載，圖片可放大預覽。API 1.10.0。
+- VERIFIED：Python 81；`scripts/ci/check.mjs`（PYTHON_BIN 指向實際 Python）Node 30、路由 74、展示建置；taskboard-projects、taskboard-drag、taskboard-demo 通過；隔離服務（47999）瀏覽器驗證篩選、完整路徑、附件上傳／儲存／後續需求排隊與取消、0 console 錯誤；資料夾視窗經隔離服務開啟、選取回傳路徑、取消保留原值。
+- 實際失敗：taskboard-details.test.mjs 第 33 行 `detail.editor` 斷言失敗，未修改的 baseline（git stash）同樣失敗，屬既有問題，未處理。
+- PARTIALLY VERIFIED：資料夾視窗由背景服務開啟時為 TopMost（顯示在最上層）但 Windows 不給前景焦點，需點一下視窗。NOT VERIFIED：真實模型讀取附件、Codex App 嵌入時的上傳。
+- 同日續：使用者授權後提交 fb58e0a（未 push），以 stop.ps1＋start.ps1 -NoBrowser 重啟正式服務。VERIFIED：重啟前無派工中任務（只有本對話鏡像卡）；重啟後 /health 正常、Browser 窗格版本 1.10.0、404 張卡片、專案下拉 69 項含 51 個 Claude 專案、新增任務有附件按鈕。觀察：Bash 背景執行的 start.ps1 在服務啟動後未結束，推測服務程序繼承輸出管道，未強制結束以免連帶關閉服務。
+
 ## 2026-10-13：GitHub AI PR／CI 與 Pages 展示
 
 - 新增跨平台 CI、三種工具路由的 AI Task／AI Review、最新 SHA／CI／檔案範圍合併 gate、明確 dispatch Pages；選定 Claude 實作＋Codex 審查。

@@ -147,7 +147,8 @@ class CodexAdapter(ToolAdapter):
             self.rpc.call('thread/name/set', {'threadId': task['workerThreadId'], 'name': task['title']})
         task = board.store.get(task_id)
         result = self.rpc.call('turn/start', {'threadId': task['workerThreadId'],
-                                             'input': [{'type': 'text', 'text': board.prompt(task)}],
+                                             'input': [{'type': 'text', 'text': board.prompt(task)},
+                                                       *({'type': 'localImage', 'path': image['path']} for image in board.run_images(task))],
                                              'cwd': cwd, 'approvalPolicy': 'on-request', 'approvalsReviewer': 'auto_review',
                                              'sandboxPolicy': {'type': 'workspaceWrite', 'writableRoots': [cwd], 'networkAccess': False}, **model_options})
         board.set_turn(task_id, result['turn']['id'])

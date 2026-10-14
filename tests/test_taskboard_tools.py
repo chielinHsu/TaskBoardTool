@@ -88,7 +88,7 @@ class ToolTests(unittest.TestCase):
         with self.assertRaises(server.BoardError):
             self.board.update(task['id'], {'version': task['version'], 'tool': 'gemini'})
         state = self.board.state()
-        self.assertEqual(state['version'], '1.9.0')
+        self.assertEqual(state['version'], '1.10.0')
         self.assertTrue(state['tools']['claude']['available'])
         self.assertTrue(state['tools']['codex']['available'])
         self.assertFalse(state['tools']['claude']['embed'])

@@ -2,7 +2,8 @@
 
 Never contacts a model. Behaviour is driven by keywords in the prompt:
 APPROVE → asks the host for tool permission; RATE_LIMIT → error result; CRASH → exits without
-a result; HANG → waits until an interrupt arrives. Argv is appended to FAKE_CLAUDE_LOG.
+a result; HANG → waits until an interrupt arrives. Argv is appended to FAKE_CLAUDE_LOG, and the content
+block types of each user message to FAKE_CLAUDE_INPUT_LOG.
 """
 import json
 import os
@@ -61,6 +62,9 @@ for line in sys.stdin:
     if kind != 'user':
         continue
     text = message['message']['content'][0]['text']
+    if os.environ.get('FAKE_CLAUDE_INPUT_LOG'):
+        with open(os.environ['FAKE_CLAUDE_INPUT_LOG'], 'a', encoding='utf-8') as log:
+            log.write(json.dumps([block.get('type') for block in message['message']['content']]) + '\n')
     emit({'type': 'system', 'subtype': 'init', 'session_id': session, 'model': 'claude-fake-5', 'cwd': os.getcwd(),
           'permissionMode': opt('--permission-mode'), 'tools': ['Bash', 'Edit']})
     if 'CRASH' in text:

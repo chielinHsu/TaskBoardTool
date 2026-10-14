@@ -21,7 +21,8 @@ Python 標準函式庫 HTTP server／SQLite／subprocess RPC；原生 HTML／CSS
 | outputs/taskboard/setup-mermaid.mjs、vendor/ | 下載固定版本 Mermaid 並以 SHA-256 核對（--check 唯讀）；vendor/ gitignore，`GET /api/vendor/mermaid` 核對安裝紀錄後以 JSON 供應 |
 | outputs/taskboard/plan_import.py | 終端機／Codex 匯入計畫 JSON 到 `/api/plans`（stdlib、loopback） |
 | outputs/taskboard/index.html | 看板、卡片、詳情、Session 心智圖（taskboard-session-map 區段）、theme message |
-| outputs/taskboard/folder_picker.py、select-folder.ps1 | Windows 原生資料夾選擇工作、輪詢／取消／300 秒逾時；只回傳路徑，不寫任務 |
+| outputs/taskboard/folder_picker.py、select-folder.ps1 | Windows 新式資料夾選擇視窗（可輸入路徑）工作、輪詢／取消／300 秒逾時；只回傳路徑，不寫任務 |
+| outputs/taskboard/attachments.py | 需求／後續需求附件：`.data/attachments/<id>/`、驗證檔名／大小、prompt 路徑描述（ADR-023） |
 | outputs/taskboard/app-panel.js | 入口、可見工作區尺寸、選取狀態、theme bridge |
 | outputs/taskboard/app-injector.mjs、cdp.mjs | CDP 文件載入、API bridge、重連 |
 | outputs/taskboard/*.ps1、launch-app.vbs | 啟動、移除整合、桌面捷徑 |
@@ -42,6 +43,7 @@ python -X utf8 -m unittest discover -s tests -p test_taskboard_sessions.py -v
 python -X utf8 -m unittest discover -s tests -p 'test_taskboard_*.py' -v
 python -X utf8 -m unittest discover -s tests -p test_taskboard_tools.py -v
 python -X utf8 -m unittest discover -s tests -p test_taskboard_plans.py -v
+python -X utf8 -m unittest discover -s tests -p test_taskboard_attachments.py -v
 set CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 && claude plugin validate outputs/taskboard/claude-mod/taskboard-pane && claude plugin test outputs/taskboard/claude-mod/taskboard-pane
 node tests/taskboard-details.test.mjs
 node tests/taskboard-drag.test.mjs
@@ -63,7 +65,8 @@ node scripts/ai/bench-model-routing.mjs
 ## 限制與不變條件
 - 看板 mod 的正規載入方式是全域副本 `~/.claude/mods/taskboard-pane` 加使用者層 `~/.claude/settings.json` 的 `env.CLAUDE_CODE_PLUGIN_DIRS`（setup-claude-mod.mjs 同步副本並登記；只對新 session 生效；git pull 後重跑即同步，已載入的 session 熱重載）。副本中引擎寫入的 `.claude-plugin/types/`、`tsconfig.json` 不覆寫；來源若被 --plugin-dir 直接載入也會產生這兩者，已 gitignore。`.claude/dev-mods/<session id>/taskboard-pane` 是 App「開發 mod」留下的 session 專屬快照，只在該 session 載入，不是原始碼連結；仍使用它時才需 update-claude-mod.ps1 同步（只更新五個已知檔案、保留 tsconfig），再 `/reload-plugins`、`/taskboard`。不碰官方安裝檔或認證。
 - 顯示名稱「列管」沿用 `backlog`，不遷移任務資料。專案候選來自 state 中既有卡片／唯讀 session；單一路徑自動載入，同名多路徑需明確選擇，保留手動路徑。`POST /api/folders/select` → `GET /api/folders/<id>`／`POST /api/folders/<id>/cancel`，沿用 token／Host／Origin／capability 保護；單一 Windows 視窗、300 秒逾時、服務關閉清理，選擇不自動儲存。
-- 執行工具 `tool` 為 codex／claude，任務、run、nextRun、同步卡片與對話皆帶工具；舊資料讀取時預設 codex，不背景改寫。session 去重與延續用 (tool, id)；延續只能同工具，換工具為 `handoff` 新對話並帶摘要。nextRun 固定保存 tool／model／effort／cwd，排隊期間不可更改，可取消排隊。export schemaVersion=5，API 1.9.0。
+- 執行工具 `tool` 為 codex／claude，任務、run、nextRun、同步卡片與對話皆帶工具；舊資料讀取時預設 codex，不背景改寫。session 去重與延續用 (tool, id)；延續只能同工具，換工具為 `handoff` 新對話並帶摘要。nextRun 固定保存 tool／model／effort／cwd，排隊期間不可更改，可取消排隊。export schemaVersion=5，API 1.10.0。
+- 附件（ADR-023）：`POST /api/attachments`（base64 JSON，單檔 10 MB、每項 20 個，唯一放寬請求上限的路由）、`GET /api/attachments/<id>`；卡片 `attachments`、nextRun／run／後續需求留言只存中繼資料。prompt 列絕對路徑；圖片給 Codex `localImage`、Claude image block（≤3.75 MB），Claude 加 `--add-dir`（可變參數，須保持最後）；延續同 session 只重送該次圖片。移除或刪卡即刪檔；未儲存草稿附件不自動清理。
 - Claude App 對話鏡像：mod 的 `turn.start`／`turn.complete` 送 `POST /api/claude-turns`；session 首句自動建卡直接進進行中（priority high、tool claude、sourceId），每句一筆 `mirror` run，回合結束進待審核（中止→列管、排有 nextRun→待辦），已完成卡重開；鏡像卡不佔單一任務鎖、排程不領、執行中不可移動／派工／送後續需求；看板自己派的 Claude run（active run 未綁定或同 session）不鏡像；真實 App 觸發、session id 等於 transcript id、回合結束進待審核已實測。卡片 `brief` 狀態 seed→drafted→manual：建卡簡介以 transcript 最早一句播種，mod 用 `$.model.complete`（haiku／low）擬「需求簡介＋驗收條件」送 `event=brief`，只在 seed／drafted 接受；使用者改過 description 即 manual 永不覆寫；後續回合不改簡介。標題 `titleSource` seed／app→manual（ADR-020）：App 首回合後才命名，建卡先用首句第一行（transcript 與 mod 文字皆去掉 App 前置的 `<system-reminder>` 區塊），之後在每個回合事件與每次 Claude session 同步跟隨 App 標題（自動命名或 App 改名）；看板上改過標題即 manual 永不覆寫；舊卡在下一個回合判定（標題仍是 `<system-reminder>`／首句第一行／App 標題才跟隨）；服務重啟復原跳過鏡像中的卡片。App 倒回（rewind）換新 CLI session id 時，依 local_*.json `priorCliSessionIds`（`priorIds`）把原卡 sourceId 改綁新 id，舊 id 的 runs 併入新 session（App 已把對話複製過去）並記在 `priorSessionIds`，不另建卡、詳情不重複列 session。聊天紀錄每回合 `details` 摺疊（只開最新）、你／進度／回報三種配色。
 - 依賴與計畫：`task_dependencies` 有向表投影 `dependsOn`／`blocks`，拒絕自我／循環；排程與 start 跳過被阻擋卡片；卡片進 `done` 時釋放前置全完成的積壓卡片到待辦。`POST /api/plans`（plan_import.py、網頁匯入計畫、mod 工具 import_plan）依 Kahn 順序建卡，`ROLE_ROUTING` 把 Claude 角色對應 model／effort；`effort` 以 `--effort` 傳給 Claude CLI，啟動前依 `supportedEffortLevels` 驗證。失敗 run 重試採卡片目前 model／effort。
 - Claude Code 為 CLI 整合：`claude -p --input-format/--output-format stream-json`、`--session-id`／`--resume`、`--model`、`--permission-mode auto --permission-prompt-tool stdio`（auto 模式由 Claude Code 安全分類器自動核准例行工具，仍需確認的才送看板，ADR-021）；模型清單由 initialize 握手取得（不耗額度）；control 協定無公開文件，依本機 2.1.283 實測。看板不內嵌 Claude App；`claude://` 深連結不能開啟看板建立的 session。真實 Claude 派工與核准往返 NOT VERIFIED。

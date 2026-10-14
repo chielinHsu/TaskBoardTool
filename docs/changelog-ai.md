@@ -1,3 +1,9 @@
+# 2026-10-14：專案篩選、資料夾選擇與附件
+
+- 使用者回報四項：全部工具時專案下拉只見 Codex、選擇資料夾卡住且不能輸入路徑、路徑候選點選後看不到完整路徑、需求與後續對話需要附加檔案或圖片。
+- 專案下拉改為單一合併清單；select-folder.ps1 改新式資料夾視窗；工作資料夾改可換行文字框＋完整路徑候選；新增 attachments.py 與 `/api/attachments`，Codex／Claude 派工帶附件路徑與原生圖片（ADR-023）。
+- VERIFIED：Python 81、Node 30、路由 74、projects／drag／demo DOM 測試、隔離服務瀏覽器操作。既有 details 測試第 33 行在 baseline 即失敗。
+
 # 2026-10-13：GitHub AI PR／CI 與 Pages 展示
 
 - 新增三種路由、維護者 Issue 派工、隔離模型與發布 job、最新 SHA 審查／合併 gate，以及 CI／Pages 明確 dispatch。
