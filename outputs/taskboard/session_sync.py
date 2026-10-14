@@ -2,8 +2,25 @@
 from datetime import datetime
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import time
+
+SCRATCH_PROJECT = 'Claude 暫存工作區'
+
+
+def project_from_cwd(cwd, fallback='既有聊天'):
+    """Project name a session's folder implies. A Claude App worktree (<repo>/.claude/worktrees/<name>) belongs to
+    its repository, and an App scratch folder (…/scratch-workspaces/…) to no repository at all; either folder's own
+    name is a random label, not a project."""
+    if not cwd:
+        return fallback
+    path = PureWindowsPath(cwd)  # App sessions record Windows paths; this also splits them on a non-Windows host
+    parts = [part.lower() for part in path.parts]
+    if 'scratch-workspaces' in parts:
+        return SCRATCH_PROJECT
+    if len(parts) >= 4 and parts[-2] == 'worktrees' and parts[-3] == '.claude':
+        return path.parts[-4]
+    return path.name or fallback
 
 
 class SessionSignals:
@@ -73,7 +90,7 @@ def session_card(chat, stale=False, tool='codex'):
     """Derived read-only card. Codex ids keep the legacy `session:` prefix; other tools add their name."""
     signal = chat['sessionStatus']
     return {'id': ('session:' if tool == 'codex' else f'session:{tool}:') + chat['id'], 'title': chat['title'], 'description': '',
-            'project': chat.get('project') or (Path(chat['cwd']).name if chat['cwd'] else '既有聊天'), 'cwd': chat['cwd'],
+            'project': chat.get('project') or project_from_cwd(chat['cwd']), 'cwd': chat['cwd'],
             'priority': 'medium', 'status': 'backlog' if stale else signal['status'],
             'sourceId': chat['id'], 'sourceTool': tool, 'tool': tool, 'model': chat.get('model', ''), 'labels': [],
             'desktopId': chat.get('desktopId', ''), 'workerThreadId': '', 'turnId': '', 'result': '', 'resultUrl': '',

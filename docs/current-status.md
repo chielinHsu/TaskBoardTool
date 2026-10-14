@@ -1,5 +1,12 @@
 # 目前狀態
 
+## 2026-10-14：Claude worktree／暫存資料夾不再成為專案名
+
+- 原因：Claude 卡片沒有 App 群組時以 cwd 的資料夾名當專案；App worktree（`<repo>\.claude\worktrees\<隨機名>`）與暫存工作區（`…\scratch-workspaces\…\scratch-…`）的資料夾名是隨機標籤，專案下拉因此多出約 30 個無意義項目。
+- 修改：session_sync.py 新增 `project_from_cwd()`（PureWindowsPath 解析，非 Windows 主機也能拆 Windows 路徑）：worktree 取 repository 名、暫存工作區為「Claude 暫存工作區」；唯讀同步卡、匯入卡、鏡像新卡共用。`Board.follow_cwd_project()` 在每次 Claude session 同步時，把專案仍等於資料夾原名的舊鏡像卡改為 repository 名；看板上改過或 App 群組給的專案不動。
+- VERIFIED：Python 82（新增 mirror 測試 1 項：路徑解析、唯讀卡、鏡像新卡、舊卡跟隨一次且不重複寫入、手動專案不動）。以正式看板資料唯讀試算：20 張已保存卡（AutoCadCreated 12、AlgoParamFineTune 1、DiskAnalyzer 2、SecurePackStudio 2、TaskBoardTool 1、暫存 1…）與 22 張唯讀卡皆對應到正確 repository。
+- NOT VERIFIED：正式服務尚未重啟套用；20 張已保存卡會在重啟後第一次 Claude 同步改寫專案欄位（version 增加，開著的詳情草稿儲存會收到 409）。
+
 ## 2026-10-14：專案篩選、資料夾選擇與附件
 
 - 專案篩選：「全部工具」時 Codex 群組 21 項排在 Claude 群組前，下拉第一屏只看得到 Codex，且同名專案分屬兩組（選哪組都篩兩種工具）。改為每個專案一項、統一排序並標註使用的工具；選單一工具時只列該工具專案。
