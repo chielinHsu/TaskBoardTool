@@ -1,3 +1,8 @@
+# 2026-10-16：開機自動啟動與斷線自動重啟
+
+- 使用者回報看板會突然斷線、需手動重開。新增 `watchdog.ps1`（每 20 秒檢查，連續兩次無回應呼叫 `start.ps1 -NoBrowser`，mutex 單一實例，`.data/watchdog.pause` 暫停）、`watchdog.vbs` 隱藏啟動、`install-autostart.ps1`（每使用者登入排程工作 `CasparTaskboardWatchdog`，失敗時改「啟動」資料夾捷徑；`-Uninstall` 移除）。
+- VERIFIED：本機非管理員建立排程成功；`stop.ps1` 停服務後約 35 秒自動重啟；`-Uninstall` 移除排程並結束看門狗後重裝。NOT VERIFIED：實際重新開機／登出後的自動啟動。
+
 # 2026-10-14：窗格下拉選單不再自己收起；Claude 卡片無群組為「未分組」
 
 - 使用者回報窗格「新增任務」的下拉選單打開後很快自己收起，並決定沒有 App 側欄群組的 Claude 卡片專案改為「未分組」（舊卡自動跟隨、計畫匯入的 Claude 事項同樣適用）。
