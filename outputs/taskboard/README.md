@@ -31,6 +31,7 @@
 | `stop.ps1 [-Port]` | 確認埠屬於本看板（頁面含 `taskboard-service` meta 標記）後停止；執行中的任務中斷並保留在待審核 |
 | `start-app.ps1 [-Port] [-DebugPort 9232] [-DataDirectory]` | 啟動或重用服務，開啟專用 Codex App 視窗與整合 helper；以 mutex 防止雙擊競態，確認除錯埠屬於專用 profile 且只聽 loopback，否則拒絕 |
 | `stop-app.ps1` | 移除側欄入口與嵌入頁面、停止 helper；不關其他 Codex 視窗、不停服務；關閉專用視窗才會關閉其除錯埠 |
+| `install-autostart.ps1 [-Uninstall] [-NoStart]` | 建立每位使用者的登入排程工作 `CasparTaskboardWatchdog`（不需管理員；被政策擋下時改建「啟動」資料夾捷徑），經 `watchdog.vbs` 隱藏執行 `watchdog.ps1`：每 20 秒檢查服務，連續兩次無回應就呼叫 `start.ps1 -NoBrowser` 重啟，紀錄寫入 `.data/watchdog.log`。`.data/watchdog.pause` 存在時暫停重啟；`-Uninstall` 移除排程與看門狗，不停服務 |
 | `install-desktop-shortcut.ps1 [-DesktopDirectory]` | 在桌面建立「Codex」捷徑（經 `launch-app.vbs` → `desktop-launch.ps1`）；同名舊捷徑備份到 `.data/desktop-shortcut-backup/` |
 
 - 看板必須由服務提供，不能直接雙擊 `index.html`。

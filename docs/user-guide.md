@@ -108,7 +108,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File outputs/taskboard/start.
 | 網頁版（最通用） | `powershell.exe -NoProfile -ExecutionPolicy Bypass -File outputs/taskboard/start.ps1` | 啟動服務並開瀏覽器；加 `-NoBrowser` 只啟服務；`-Port 47825` 換埠 |
 | Codex App 專用視窗 | 雙擊桌面「Codex」捷徑、`開啟 Codex 看板.cmd`，或 `outputs/taskboard/start-app.ps1` | 啟動（或重用）服務，開專用 Codex 視窗，左側「New chat」下方多出「任務看板」入口，點了在主工作區顯示看板 |
 | Claude App 內 | 開任一 Code session，窗格自動停靠；關閉後輸入 `/taskboard`、按輸入框上方「▦ 任務看板」列，或在空的輸入框按 **9** 重開 | 窗格顯示卡片、徽章、核准請求與常用按鈕；完整操作仍用網頁版（可在 Claude App 的 Browser 窗格開 `http://127.0.0.1:47824`，專案的 `.claude/launch.json` 已提供 `taskboard` 設定） |
-| 停止服務 | `outputs/taskboard/stop.ps1` | 正在執行的任務會中斷並保留在待審核，其他卡片與紀錄保留 |
+| 開機自動啟動＋斷線自動重啟 | 執行一次 `outputs/taskboard/install-autostart.ps1`；移除用 `-Uninstall` | 登入 Windows 時啟動看門狗，每 20 秒檢查，看板無回應約 40 秒內自動重啟；Claude 窗格會自動重新連上 |
+| 停止服務 | `outputs/taskboard/stop.ps1` | 正在執行的任務會中斷並保留在待審核，其他卡片與紀錄保留；已裝自動啟動時，看門狗會再把服務帶起來，要保持停止請先建立 `outputs/taskboard/.data/watchdog.pause` 或執行 `install-autostart.ps1 -Uninstall` |
 | 移除 Codex 視窗整合 | `outputs/taskboard/stop-app.ps1` | 移除側欄入口與嵌入頁面、停止 helper；不關閉其他 Codex 視窗、不停止看板服務 |
 
 注意事項：
