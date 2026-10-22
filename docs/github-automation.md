@@ -67,3 +67,7 @@ python -m http.server 8080 --directory work/pages
 開 `http://localhost:8080/`。輸出只有 index.html、demo.js、.nojekyll，不複製 repository 的 .data、token、session 或私人檔案。Playwright 是安裝在忽略的 work/browser 的 CI 測試工具，不是看板 runtime 依賴。
 
 真正的 Claude 任務、Codex 審查、自動合併與其後部署，需要 Secrets 後以只改展示文案的小 Issue 做端到端驗收。格式、路由、SHA／失敗 CI 的拒絕與展示可在不耗模型額度下驗證；不要將尚未執行的模型流程稱為已生效。
+
+## 非 main 目標的端到端驗收
+
+ADR-026 的非 main 目標流程以下列方式驗收：從 main 建立 `develop`，以 `ai/claude/<主題>` 分支（分支前綴指定 Claude 審查）開一個只改 `docs/` 文件的 PR 指向 `develop`。預期 CI 三個 job 都執行；AI Review 記錄目標 `develop` 與當時的 base SHA，唯讀簽出目標快照；核准後合併到 `develop`，不 dispatch Pages。驗收結果記在 `docs/current-status.md` 需求進度表 R26。
