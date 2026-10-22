@@ -1,5 +1,13 @@
 # GitHub AI PR／CI 與 Pages 展示
 
+## 修改紀錄
+
+| 日期 | 修改者 | 說明 |
+|---|---|---|
+| 2026-10-22 | Claude Code (Opus 5.5) | 新增「非 main 目標的端到端驗收」一節（R26）；補上本修改紀錄表 |
+| 2026-10-22 | Claude Code (Opus 5.5) | 發布 2026-10-15 的修改：自動合併支援任意既有目標分支、審查固定目標 ref／base SHA、只有 main 部署 Pages（ADR-026） |
+| 2026-10-13 | 未記錄 | 建立：Claude／Codex 自動 PR、CI 與 Pages 展示（ADR-022，PR #1） |
+
 完整工具仍在 Windows 本機執行。Pages 是純前端範例，支援卡片 CRUD、拖曳、模擬派工、範例對話、Session 心智圖、篩選與匯出；資料僅存在這個瀏覽器的 localStorage。不連模型、SQLite、真實 session 或本機檔案，不支援計畫匯入。
 
 ## 工具模式與認證

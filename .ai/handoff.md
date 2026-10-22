@@ -3,7 +3,7 @@
 > 覆寫式交接單；歷史在 `docs/changelog-ai.md`。進度的單一事實來源是 `docs/current-status.md` 的需求進度表（R26）。
 
 ## 正在做
-2026-10-15 本機實作與驗證完成；2026-10-22 依使用者要求在 `feat/pr-automerge-any-base` 提交（rebase 到 main `76c2e0a`，即 AI 結構 2.0.0 已合併之後）、推送並開 PR，CI 通過後自動 rebase 合併。
+驗收 R26 的非 main 目標流程（R26.1）：`develop` 自 main `02b2b3b` 建立，PR #9（`ai/claude/r26-develop-check` → develop）第一次 AI 審查依文件規則拒絕，已補修改紀錄表與交接後重跑。PR #8（本功能）已合併為 main `02b2b3b`。
 
 ## 已完成
 - CI 接受所有 PR 目標，加入 ready_for_review／edited 事件。
@@ -21,8 +21,8 @@
 - NOT VERIFIED：GitHub 真實多目標 CI／模型審查／合併；未消耗模型額度。
 
 ## 下一步
-確認 PR 的 CI 與合併結果；合併後主 checkout 切回 main 同步。
-舊分支 CI 需包含新版 workflow，才會對非 main 目標觸發；發布後用小 PR 驗收 develop 等目標。
+確認 PR #9 重跑後的 AI 審查與合併結果（應合併到 develop、不 dispatch Pages），把結果寫回 R26.1。
+決定 `develop` 是否保留、要不要設 protection／ruleset。
 
 ## 相關檔案
 .github/workflows/{ci,ai-review}.yml、scripts/ci/{ai-policy,github-automation}.cjs、tests/ai-automation.test.mjs、docs/github-automation.md。

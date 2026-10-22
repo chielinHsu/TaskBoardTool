@@ -47,6 +47,7 @@
 | R22.4 | | 保留專案專屬：`sync-skills.ps1`／`skill-sync.json`、模型路由案例與檢查、hook 環境變數、settings 接線、CI；`check-ai-structure.ps1` 補回專案檢查並修 Linux 路徑 | ✅ | | | 見 R22.5 |
 | R22.5 | | 驗證與提交 | ✅ | | PR #7 | 本機四項檢查通過；CI 三項（含 ubuntu pwsh 結構檢查）通過後 rebase 合併 |
 | R26 | 功能 | PR 自動合併支援其他目標分支（CI 接受所有 PR 目標、審查固定 base ref／SHA、只有 main 部署 Pages） | ✅ | [ADR-026](adr/026-pr-automerge-any-base.md)、[github-automation](github-automation.md) | `feat/pr-automerge-any-base`（PR，CI 通過後自動合併） | PARTIALLY VERIFIED：scripts/ci/check.mjs 與 Actionlint 通過；真實多目標 GitHub 流程未驗證 |
+| R26.1 | | 非 main 目標端到端驗收：`develop`（自 main `02b2b3b`）＋ PR #9（`ai/claude/r26-develop-check`，只改 docs） | ⏳ | | PR #9 | CI 三項通過、AI Review 記錄目標 develop／base `02b2b3b`、引擎 claude；第一次審查依文件規則拒絕（缺修改紀錄表、未更新交接）→ 不合併，補齊後重跑 |
 | R23 | 修正 | `tests/taskboard-details.test.mjs` 第 33 行 baseline 失敗（2026-10-14 記錄，之後未見處理） | ⚠️ | | | NOT VERIFIED（是否仍失敗未重跑） |
 | R24 | 雜項 | 補驗證缺口：窗格下拉選單停留 10 秒、實際重開機後自動啟動、Claude 核准往返、Claude 角色／hook 實際 model／effort | ⬜ | | | NOT VERIFIED（需人工或授權） |
 | R25 | 功能 | Git 分支／worktree 綁定、截止日期等（AI_CONTEXT 記為尚未實作；是否要做待決定） | ⬜ | | | |
@@ -57,7 +58,7 @@
 
 ### 待使用者決定
 
-1. R26：PR 合併後，用小 PR 驗收非 main 目標（例如 develop）的 CI 與自動合併；其他分支的 protection／ruleset 要不要設定。
+1. R26：非 main 目標的驗收進行中（R26.1、PR #9）；`develop` 要不要設 protection／ruleset（目前沒有，只靠 AI 審查關卡）、驗收後 `develop` 是否保留。
 2. R24：哪些驗證缺口要排人工驗收（窗格下拉選單、重開機自動啟動、核准往返）。
 3. R23：`taskboard-details.test.mjs` 第 33 行失敗是否先修。
 4. R25：Git 分支／worktree 綁定要不要做。
