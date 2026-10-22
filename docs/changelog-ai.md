@@ -1,3 +1,9 @@
+# 2026-10-22：驗收 R26 非 main 目標自動合併（Claude Code, Opus 5.5）
+
+- 使用者加好 `ANTHROPIC_API_KEY` 後要求實際驗收 R26。從 main `02b2b3b` 建立 `develop`，以 `ai/claude/r26-develop-check` 開 PR #9 指向 develop，只改 `docs/github-automation.md`。
+- 第一次結果：CI 三項（verify ubuntu／windows、demo-browser）對 develop 目標執行並通過；AI Review 被觸發，記錄 `REVIEWED_BASE_REF=develop`、`REVIEWED_BASE_SHA=02b2b3b`、引擎 claude；Claude 依 project-rules 拒絕（功能文件缺修改紀錄表、未更新進度表／交接／changelog），verdict job 失敗、沒有合併。
+- 依審查意見補上 `github-automation.md` 修改紀錄表、R26.1、交接單與本筆紀錄，推回同一分支重跑 CI 與審查。
+
 # 2026-10-22：提交並發布「PR 自動合併支援其他目標分支」（Claude Code, Opus 5.5）
 
 - 使用者要求把主 checkout 裡未提交的 11 個檔案（2026-10-15 的「PR 自動合併支援其他目標分支」）提交並推送。在 `feat/pr-automerge-any-base` 提交後 rebase 到 main `76c2e0a`（AI 結構 2.0.0 已合併）。
