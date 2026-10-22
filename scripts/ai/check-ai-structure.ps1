@@ -1,176 +1,544 @@
 ﻿<#
-.SYNOPSIS
-  檢查 AI 協作結構：版控、必要檔案、入口引用、文件長度、佔位符、設定格式、UTF-8 與技能鏡像。
-.DESCRIPTION
-  一般模式：TODO(project) 為警告。-Strict：TODO(project) 視為失敗。
-  只讀取檔案，不修改專案（技能鏡像以 sync-skills.ps1 -Check 檢查）。
+	Validate the shared Codex / Claude Code structure of this repository (template 2.0.0).
+
+	  check-ai-structure.ps1            FAIL on structural errors, WARN on unfilled TODO(project)
+	  check-ai-structure.ps1 -Strict    unfilled TODO(project) also FAILs
+
+	Exit code 0 = no FAIL, 1 = at least one FAIL.
+	This checks structure only. It does not judge whether the content is good.
+
+	What is checked:
+	  - required files of template 2.0.0 and TEMPLATE_VERSION (major version 2)
+	  - AGENTS.md: required reading, the four mandatory rules (keywords), size, links
+	  - CLAUDE.md: required imports (and @MODEL_ROUTING.md when MODEL_ROUTING.md exists)
+	  - docs/current-status.md has the requirements table (needs the Chinese heading "需求進度表")
+	  - docs/decisions.md is an index (no embedded ADR) and docs/adr/ exists, linked ADR files exist
+	  - unreplaced {{PLACEHOLDER}}, unfilled TODO(project): (FAIL with -Strict)
+	  - .claude/settings.json is valid JSON
+	  - skill mirror (.agents/skills vs .claude/skills) through sync-skills.ps1 -Check
+	  - model routing, when MODEL_ROUTING.md exists: five agents, hook, settings wiring, and
+	    node scripts/ai/check-model-routing.mjs
+	Project-specific additions (TaskBoardTool; re-apply them after refreshing the template, see ADR-025):
+	  - the repository root is resolved with Split-Path, so the script also runs under pwsh on Linux (CI runs it there)
+	  - bench-model-routing.mjs and the .claude/skills mirror are required files
+	  - git work tree check
+	  - .claude/settings.json: no bypassPermissions, deny rules for git add . / git add -A
+	  - agent frontmatter names, .gitignore patterns, documents are valid UTF-8 without U+FFFD
+	This file contains Chinese keywords: keep it saved as UTF-8 with BOM (Windows PowerShell 5.1).
 #>
+
 [CmdletBinding()]
 param(
-  [switch]$Strict,
-  [string]$Root
+	[switch]$Strict,
+	[string]$RepositoryRoot
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
-if (-not $Root) { $Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
-$Root = (Resolve-Path -LiteralPath $Root).Path
 
-$script:errors = New-Object System.Collections.Generic.List[string]
-$script:warnings = New-Object System.Collections.Generic.List[string]
-function Fail([string]$msg) { $script:errors.Add($msg) | Out-Null; Write-Host "  [失敗] $msg" -ForegroundColor Red }
-function Warn([string]$msg) { $script:warnings.Add($msg) | Out-Null; Write-Host "  [警告] $msg" -ForegroundColor DarkYellow }
-function Ok([string]$msg) { Write-Host "  [通過] $msg" -ForegroundColor Green }
-function P([string]$rel) { return (Join-Path $Root $rel) }
+if ([string]::IsNullOrWhiteSpace($RepositoryRoot))
+{
+	# Split-Path instead of Join-Path '..\..': a backslash is a normal character on Linux (CI runs this under pwsh there).
+	$RepositoryRoot = (Resolve-Path -LiteralPath (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))).Path
+}
+
+$fails = New-Object System.Collections.Generic.List[string]
+$warns = New-Object System.Collections.Generic.List[string]
+
+function Add-Fail { param([string]$Message) $script:fails.Add($Message) }
+function Add-Warn { param([string]$Message) $script:warns.Add($Message) }
+
+function Read-Text
+{
+	param([string]$RelativePath)
+
+	return [IO.File]::ReadAllText((Join-Path $RepositoryRoot $RelativePath), [Text.Encoding]::UTF8)
+}
+
+function Test-RepoFile
+{
+	param([string]$RelativePath)
+
+	return Test-Path -LiteralPath (Join-Path $RepositoryRoot $RelativePath) -PathType Leaf
+}
+
+function Test-RepoDirectory
+{
+	param([string]$RelativePath)
+
+	return Test-Path -LiteralPath (Join-Path $RepositoryRoot $RelativePath) -PathType Container
+}
+
+# ---- 1. required files (template 2.0.0) --------------------------------------
+$requiredFiles = @(
+	'AGENTS.md',
+	'CLAUDE.md',
+	'AI_CONTEXT.md',
+	'.agents/harness/engineering-workflow.md',
+	'.agents/harness/project-rules.md',
+	'.agents/harness/skill-sync.json',
+	'.agents/harness/TEMPLATE_VERSION',
+	'.agents/skills/ai-handoff/SKILL.md',
+	'.ai/handoff.md',
+	'docs/00-master-plan.md',
+	'docs/architecture.md',
+	'docs/decisions.md',
+	'docs/current-status.md',
+	'docs/changelog-ai.md',
+	'docs/plan/_template.md',
+	'docs/adr/_template.md',
+	'docs/steps/_template/spec.md',
+	'docs/steps/_template/diagram.md',
+	'docs/steps/_template/explainer.html',
+	'docs/steps/_template/perf.md',
+	'docs/steps/_template/storyboard.md',
+	'tools/ste-lint.mjs',
+	'scripts/ai/sync-skills.ps1',
+	'scripts/ai/check-ai-structure.ps1',
+	# project-specific (TaskBoardTool)
+	'.claude/skills/ai-handoff/SKILL.md',
+	'scripts/ai/bench-model-routing.mjs'
+)
+foreach ($file in $requiredFiles)
+{
+	if (-not (Test-RepoFile $file))
+	{
+		Add-Fail "missing required file: $file"
+	}
+}
+if (-not (Test-RepoDirectory 'docs/adr'))
+{
+	Add-Fail 'missing required folder: docs/adr (one file per decision: docs/adr/NNN-slug.md)'
+}
+
+# ---- 2. TEMPLATE_VERSION ------------------------------------------------------
+$templateVersion = ''
+if (Test-RepoFile '.agents/harness/TEMPLATE_VERSION')
+{
+	$templateVersion = (Read-Text '.agents/harness/TEMPLATE_VERSION').Trim()
+	if ($templateVersion -notmatch '^2\.\d+\.\d+$')
+	{
+		Add-Fail "TEMPLATE_VERSION is '$templateVersion'; this checker is for template 2.x (run New-AiProject.ps1 -Refresh from the 2.0.0 template)"
+	}
+}
+
+# ---- 3. AGENTS.md (Codex entry, shared by Claude through the import) --------
+$readFirst = @(
+	'AI_CONTEXT.md',
+	'.agents/harness/engineering-workflow.md',
+	'.agents/harness/project-rules.md',
+	'.ai/handoff.md',
+	'docs/current-status.md'
+)
+
+# The four mandatory rules: [rule description, keywords that must all appear in AGENTS.md].
+$mandatoryRules = @(
+	@('rule 1 (reply in Traditional Chinese zh-TW, summarize on completion)', @('繁體中文', 'zh-TW', '總結')),
+	@('rule 2 (no fabricated verification, no hidden failures)', @('不虛構驗證', '不隱藏失敗')),
+	@('rule 3 (no unrequested commit/push, explicit staging)', @('不擅自 commit', 'git add -A')),
+	@('rule 4 (expand requests into the requirements table before implementing)', @('需求進度表', 'docs/current-status.md'))
+)
+
+if (Test-RepoFile 'AGENTS.md')
+{
+	$agentsText = Read-Text 'AGENTS.md'
+	$agentsBytes = (Get-Item -LiteralPath (Join-Path $RepositoryRoot 'AGENTS.md')).Length
+
+	foreach ($path in $readFirst)
+	{
+		if ($agentsText.IndexOf($path, [StringComparison]::Ordinal) -lt 0)
+		{
+			Add-Fail "AGENTS.md does not list required reading: $path"
+		}
+	}
+
+	foreach ($rule in $mandatoryRules)
+	{
+		foreach ($keyword in $rule[1])
+		{
+			if ($agentsText.IndexOf($keyword, [StringComparison]::Ordinal) -lt 0)
+			{
+				Add-Fail "AGENTS.md is missing the mandatory $($rule[0]): keyword not found: $keyword"
+			}
+		}
+	}
+
+	# Codex stops adding AGENTS.md content once the combined size reaches 32 KiB.
+	if ($agentsBytes -gt 32768)
+	{
+		Add-Fail "AGENTS.md is $agentsBytes bytes; Codex truncates project docs above 32768 bytes"
+	}
+	$agentsLines = ($agentsText -split "`n").Count
+	if ($agentsLines -gt 80)
+	{
+		Add-Warn "AGENTS.md has $agentsLines lines; it is an entry file, move content into the shared docs"
+	}
+
+	foreach ($match in [regex]::Matches($agentsText, '\]\(([^)#\s]+)(#[^)]*)?\)'))
+	{
+		$target = $match.Groups[1].Value
+		if (($target -notmatch '^[a-zA-Z][a-zA-Z0-9+.-]*:') -and (-not (Test-RepoFile $target)))
+		{
+			Add-Fail "AGENTS.md links to a file that does not exist: $target"
+		}
+	}
+}
+
+# ---- 4. CLAUDE.md (Claude entry) ---------------------------------------------
+$requiredImports = @(
+	'AGENTS.md',
+	'AI_CONTEXT.md',
+	'.agents/harness/engineering-workflow.md',
+	'.agents/harness/project-rules.md'
+)
+$hasModelRouting = Test-RepoFile 'MODEL_ROUTING.md'
+if ($hasModelRouting)
+{
+	$requiredImports += 'MODEL_ROUTING.md'
+}
+
+if (Test-RepoFile 'CLAUDE.md')
+{
+	$claudeText = Read-Text 'CLAUDE.md'
+	$imports = @()
+	foreach ($match in [regex]::Matches($claudeText, '(?m)^@(\S+)\s*$'))
+	{
+		$imports += $match.Groups[1].Value
+	}
+
+	foreach ($path in $requiredImports)
+	{
+		if ($imports -notcontains $path)
+		{
+			Add-Fail "CLAUDE.md does not import: @$path"
+		}
+	}
+	foreach ($path in $imports)
+	{
+		if (-not (Test-RepoFile $path))
+		{
+			Add-Fail "CLAUDE.md imports a file that does not exist: @$path"
+		}
+	}
+
+	$claudeLines = ($claudeText -split "`n").Count
+	if ($claudeLines -gt 80)
+	{
+		Add-Warn "CLAUDE.md has $claudeLines lines; keep only Claude-specific rules here"
+	}
+}
+
+# ---- 5. requirements table in docs/current-status.md --------------------------
+if (Test-RepoFile 'docs/current-status.md')
+{
+	$statusText = Read-Text 'docs/current-status.md'
+	if (-not [regex]::IsMatch($statusText, '(?m)^##\s+需求進度表'))
+	{
+		Add-Fail 'docs/current-status.md has no "## 需求進度表" section (the requirements table, see engineering-workflow.md)'
+	}
+	else
+	{
+		$firstHeading = [regex]::Match($statusText, '(?m)^##\s+(.+?)\s*$').Groups[1].Value
+		if ($firstHeading -notlike '需求進度表*')
+		{
+			Add-Warn "docs/current-status.md: the requirements table should be the first section (first '##' heading is '$firstHeading')"
+		}
+	}
+}
+
+# ---- 6. decisions.md is an index, docs/adr/ holds the decisions ---------------
+if (Test-RepoFile 'docs/decisions.md')
+{
+	$decisionsText = Read-Text 'docs/decisions.md'
+	if ([regex]::IsMatch($decisionsText, '(?m)^##\s+(ADR|D)-?\d+'))
+	{
+		Add-Fail 'docs/decisions.md still embeds decisions (## ADR-nnn / ## D-nnnn headings); move them to docs/adr/NNN-slug.md and keep only an index here'
+	}
+	$adrLinks = [regex]::Matches($decisionsText, '\]\((adr/[^)#\s]+)(#[^)]*)?\)')
+	if ($adrLinks.Count -eq 0)
+	{
+		Add-Fail 'docs/decisions.md has no links to docs/adr/ files; it must be an index (one row per ADR)'
+	}
+	foreach ($match in $adrLinks)
+	{
+		$target = 'docs/' + $match.Groups[1].Value
+		if (-not (Test-RepoFile $target))
+		{
+			Add-Fail "docs/decisions.md links to an ADR file that does not exist: $target"
+		}
+	}
+}
+
+# ---- 7. state files stay small ----------------------------------------------
+$lineLimits = @{
+	'.ai/handoff.md'          = 60
+	'docs/current-status.md'  = 150
+}
+foreach ($file in $lineLimits.Keys)
+{
+	if (Test-RepoFile $file)
+	{
+		$count = ((Read-Text $file) -split "`n").Count
+		if ($count -gt $lineLimits[$file])
+		{
+			Add-Warn "$file has $count lines (limit $($lineLimits[$file])); trim it or move history to docs/changelog-ai.md"
+		}
+	}
+}
+
+# ---- 8. unreplaced template placeholders -------------------------------------
+$placeholderScan = @('AGENTS.md', 'CLAUDE.md', 'AI_CONTEXT.md', 'MODEL_ROUTING.md', '.ai/handoff.md') +
+	@(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'docs') -Filter '*.md' -File -ErrorAction SilentlyContinue |
+		ForEach-Object { 'docs/' + $_.Name })
+foreach ($file in $placeholderScan)
+{
+	if ((Test-RepoFile $file) -and ([regex]::IsMatch((Read-Text $file), '\{\{[A-Z_]+\}\}')))
+	{
+		Add-Fail "$file still contains an unreplaced template placeholder"
+	}
+}
+
+# ---- 9. unfilled TODO(project) -----------------------------------------------
+$todoFiles = @('AI_CONTEXT.md', '.agents/harness/project-rules.md', 'MODEL_ROUTING.md', 'docs/00-master-plan.md', 'docs/architecture.md')
+$todoTotal = 0
+$todoDetail = @()
+foreach ($file in $todoFiles)
+{
+	if (Test-RepoFile $file)
+	{
+		$count = [regex]::Matches((Read-Text $file), 'TODO\(project\):').Count
+		if ($count -gt 0)
+		{
+			$todoTotal += $count
+			$todoDetail += "$file ($count)"
+		}
+	}
+}
+if ($todoTotal -gt 0)
+{
+	$message = "unfilled TODO(project): $todoTotal in " + ($todoDetail -join ', ')
+	if ($Strict) { Add-Fail $message } else { Add-Warn $message }
+}
+
+# ---- 10. Claude settings and gitignore ---------------------------------------
+$settingsJson = $null
+if (Test-RepoFile '.claude/settings.json')
+{
+	try
+	{
+		$settingsJson = Read-Text '.claude/settings.json' | ConvertFrom-Json
+	}
+	catch
+	{
+		Add-Fail ".claude/settings.json is not valid JSON: $($_.Exception.Message)"
+	}
+}
+else
+{
+	Add-Warn '.claude/settings.json is missing; git add -A / add . will not be blocked for Claude Code'
+}
+
+if (Test-RepoFile '.gitignore')
+{
+	if ((Read-Text '.gitignore') -notmatch '(?m)^\.claude/settings\.local\.json\s*$')
+	{
+		Add-Warn '.gitignore does not ignore .claude/settings.local.json'
+	}
+}
+else
+{
+	Add-Warn '.gitignore is missing'
+}
+
+# ---- 11. skill mirror ----------------------------------------------------------
+$syncScript = Join-Path $PSScriptRoot 'sync-skills.ps1'
+if (Test-Path -LiteralPath $syncScript -PathType Leaf)
+{
+	# The child prints its own per-skill FAIL lines to the console.
+	# Older project copies name the root parameter -Root instead of -RepositoryRoot; pass whichever exists.
+	$syncParameters = (Get-Command -Name $syncScript).Parameters
+	$syncArguments = @{ Check = $true }
+	if ($syncParameters.ContainsKey('RepositoryRoot'))
+	{
+		$syncArguments['RepositoryRoot'] = $RepositoryRoot
+	}
+	elseif ($syncParameters.ContainsKey('Root'))
+	{
+		$syncArguments['Root'] = $RepositoryRoot
+	}
+	$global:LASTEXITCODE = 0
+	try
+	{
+		& $syncScript @syncArguments
+	}
+	catch
+	{
+		Write-Host "FAIL sync-skills.ps1 raised an error: $($_.Exception.Message)"
+		$global:LASTEXITCODE = 1
+	}
+	if ($LASTEXITCODE -ne 0)
+	{
+		Add-Fail 'skills: .agents/skills and .claude/skills are out of sync (details above); run scripts/ai/sync-skills.ps1'
+	}
+}
+
+# ---- 12. model routing (Claude only; checked when MODEL_ROUTING.md exists) ------
+if (-not $hasModelRouting)
+{
+	Add-Warn 'MODEL_ROUTING.md is missing; model routing for Claude Code subagents is not set up (template 2.0.0 includes it)'
+}
+else
+{
+	$agentNames = @('fast-worker', 'developer', 'developer-deep', 'architect', 'architect-deep')
+	foreach ($agent in $agentNames)
+	{
+		if (-not (Test-RepoFile ".claude/agents/$agent.md"))
+		{
+			Add-Fail "model routing: missing .claude/agents/$agent.md"
+		}
+	}
+	if (-not (Test-RepoFile '.claude/hooks/model_router.mjs'))
+	{
+		Add-Fail 'model routing: missing .claude/hooks/model_router.mjs'
+	}
+	if ($null -ne $settingsJson)
+	{
+		$hookText = ($settingsJson | ConvertTo-Json -Depth 20)
+		if ($hookText.IndexOf('model_router.mjs', [StringComparison]::Ordinal) -lt 0)
+		{
+			Add-Fail 'model routing: .claude/settings.json does not register .claude/hooks/model_router.mjs (UserPromptSubmit)'
+		}
+	}
+
+	$routingCheck = Join-Path $RepositoryRoot 'scripts/ai/check-model-routing.mjs'
+	if (-not (Test-Path -LiteralPath $routingCheck -PathType Leaf))
+	{
+		Add-Fail 'model routing: missing scripts/ai/check-model-routing.mjs'
+	}
+	else
+	{
+		$node = Get-Command node -ErrorAction SilentlyContinue
+		if ($null -eq $node)
+		{
+			Add-Warn 'node was not found in PATH; scripts/ai/check-model-routing.mjs was not run'
+		}
+		else
+		{
+			$previousPreference = $ErrorActionPreference
+			$previousEncoding = [Console]::OutputEncoding
+			$ErrorActionPreference = 'Continue'
+			try
+			{
+				[Console]::OutputEncoding = [Text.Encoding]::UTF8
+				$routingOutput = & $node.Source $routingCheck 2>&1 | Out-String
+				$routingExit = $LASTEXITCODE
+			}
+			finally
+			{
+				$ErrorActionPreference = $previousPreference
+				[Console]::OutputEncoding = $previousEncoding
+			}
+			foreach ($line in ($routingOutput -split "`r?`n"))
+			{
+				if ($line -match '^(FAIL|WARN|RESULT)')
+				{
+					Write-Host "model-routing: $line"
+				}
+			}
+			if ($routingExit -ne 0)
+			{
+				Add-Fail "model routing: node scripts/ai/check-model-routing.mjs failed (exit code $routingExit; run it directly for details)"
+			}
+		}
+	}
+}
+
+# ---- 13. project-specific checks (TaskBoardTool; not part of the template) -------
+$gitOutput = & git -C $RepositoryRoot rev-parse --is-inside-work-tree 2>&1
+if (($LASTEXITCODE -ne 0) -or ("$gitOutput".Trim() -ne 'true'))
+{
+	Add-Fail "git work tree check failed (do not read this as 'no repository'): $gitOutput"
+}
+
+if ($null -ne $settingsJson)
+{
+	$permissions = $settingsJson.PSObject.Properties['permissions']
+	$defaultMode = ''
+	$denyRules = @()
+	if ($null -ne $permissions)
+	{
+		if ($null -ne $permissions.Value.PSObject.Properties['defaultMode']) { $defaultMode = [string]$permissions.Value.defaultMode }
+		if ($null -ne $permissions.Value.PSObject.Properties['deny']) { $denyRules = @($permissions.Value.deny) }
+	}
+	if ($defaultMode -eq 'bypassPermissions')
+	{
+		Add-Fail '.claude/settings.json sets bypassPermissions'
+	}
+	foreach ($rule in @('Bash(git add .)', 'Bash(git add -A)'))
+	{
+		if ($denyRules -notcontains $rule)
+		{
+			Add-Fail ".claude/settings.json permissions.deny is missing $rule"
+		}
+	}
+}
+
+foreach ($agent in @('fast-worker', 'developer', 'developer-deep', 'architect', 'architect-deep'))
+{
+	$agentFile = ".claude/agents/$agent.md"
+	if ((Test-RepoFile $agentFile) -and ((Read-Text $agentFile) -notmatch "(?s)^---\r?\n.*?name:\s*$agent\r?\n.*?\r?\n---"))
+	{
+		Add-Fail "$agentFile frontmatter is missing or its name does not match"
+	}
+}
+
+if (Test-RepoFile '.gitignore')
+{
+	$gitignoreText = Read-Text '.gitignore'
+	foreach ($pattern in @('.claude/worktrees/', '.ai/bench/', 'CLAUDE.local.md'))
+	{
+		if ($gitignoreText.IndexOf($pattern, [StringComparison]::Ordinal) -lt 0)
+		{
+			Add-Fail ".gitignore is missing $pattern"
+		}
+	}
+}
 
 $strictUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
-function Read-Utf8([string]$rel) {
-  $bytes = [System.IO.File]::ReadAllBytes((P $rel))
-  $offset = 0
-  if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $offset = 3 }
-  try { return $strictUtf8.GetString($bytes, $offset, $bytes.Length - $offset) }
-  catch { Fail "$rel 不是有效 UTF-8"; return '' }
+$trimChars = [char[]]@([char]92, [char]47)
+$encodingScan = @('AGENTS.md', 'CLAUDE.md', 'CODEX.md', 'AI_CONTEXT.md', 'MODEL_ROUTING.md', '.ai/handoff.md') +
+	@(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'docs') -Filter '*.md' -File -Recurse -ErrorAction SilentlyContinue |
+		ForEach-Object { $_.FullName.Substring($RepositoryRoot.Length).TrimStart($trimChars).Replace([string][char]92, '/') })
+foreach ($file in $encodingScan)
+{
+	if (-not (Test-RepoFile $file)) { continue }
+	try
+	{
+		$decoded = $strictUtf8.GetString([IO.File]::ReadAllBytes((Join-Path $RepositoryRoot $file)))
+		if ($decoded.Contains([string][char]0xFFFD))
+		{
+			Add-Fail "$file contains U+FFFD (possible mojibake)"
+		}
+	}
+	catch
+	{
+		Add-Fail "$file is not valid UTF-8"
+	}
 }
 
-Write-Host "AI 結構檢查：$Root$(if ($Strict) { '（Strict）' })"
-
-# 1. 版控
-Write-Host '[1] 版控'
-$taskboardGitResult = & git -C $Root rev-parse --is-inside-work-tree 2>&1
-if ($LASTEXITCODE -eq 0 -and $taskboardGitResult -eq 'true') { Ok 'Git repository／worktree 版控可用' }
-else { Fail "Git 狀態檢查失敗（不可直接視為缺少 repository）：$taskboardGitResult" }
-
-# 2. 必要檔案
-Write-Host '[2] 必要檔案'
-$required = @(
-  'AGENTS.md', 'CLAUDE.md', 'AI_CONTEXT.md', 'MODEL_ROUTING.md',
-  '.agents/harness/engineering-workflow.md', '.agents/harness/project-rules.md',
-  '.agents/harness/skill-sync.json', '.agents/harness/TEMPLATE_VERSION',
-  '.agents/skills/ai-handoff/SKILL.md', '.ai/handoff.md',
-  '.claude/settings.json',
-  '.claude/agents/fast-worker.md', '.claude/agents/developer.md', '.claude/agents/developer-deep.md',
-  '.claude/agents/architect.md', '.claude/agents/architect-deep.md',
-  '.claude/hooks/model_router.mjs', '.claude/skills/ai-handoff/SKILL.md',
-  'docs/architecture.md', 'docs/decisions.md', 'docs/current-status.md', 'docs/changelog-ai.md',
-  'scripts/ai/sync-skills.ps1', 'scripts/ai/check-ai-structure.ps1',
-  'scripts/ai/check-model-routing.mjs', 'scripts/ai/bench-model-routing.mjs'
-)
-$missing = @($required | Where-Object { -not (Test-Path -LiteralPath (P $_)) })
-foreach ($m in $missing) { Fail "缺少 $m" }
-if ($missing.Count -eq 0) { Ok "$($required.Count) 個必要檔案齊全" }
-
-# 3. 入口引用
-Write-Host '[3] 入口引用'
-$errorsBefore = $script:errors.Count
-if (Test-Path -LiteralPath (P 'CLAUDE.md')) {
-  $claude = Read-Utf8 'CLAUDE.md'
-  foreach ($imp in @('@AGENTS.md', '@AI_CONTEXT.md', '@.agents/harness/engineering-workflow.md', '@.agents/harness/project-rules.md', '@MODEL_ROUTING.md')) {
-    if ($claude -notmatch ('(?m)^' + [regex]::Escape($imp) + '\s*$')) { Fail "CLAUDE.md 未匯入 $imp（需獨立一行）" }
-  }
+# ---- report -------------------------------------------------------------------
+if ($templateVersion -ne '')
+{
+	Write-Host "Template version: $templateVersion"
 }
-if (Test-Path -LiteralPath (P 'AGENTS.md')) {
-  $agents = Read-Utf8 'AGENTS.md'
-  foreach ($ref in @('AI_CONTEXT.md', 'engineering-workflow.md', 'project-rules.md', '.ai/handoff.md', 'docs/current-status.md', 'ai-handoff')) {
-    if (-not $agents.Contains($ref)) { Fail "AGENTS.md 未引用 $ref" }
-  }
-  if ($agents -match '(?m)^@') { Warn 'AGENTS.md 含 @ 匯入行；Codex 不解析，請改由 CLAUDE.md 匯入' }
-}
-if (Test-Path -LiteralPath (P 'AI_CONTEXT.md')) {
-  $ctx = Read-Utf8 'AI_CONTEXT.md'
-  foreach ($section in @('## 用途', '## 技術棧', '## 重要目錄', '## 建置與測試', '## 限制與不變條件', '## 詞彙', '## Context Routing')) {
-    if (-not $ctx.Contains($section)) { Fail "AI_CONTEXT.md 缺少段落「$section」" }
-  }
-}
-if ($script:errors.Count -eq $errorsBefore) { Ok '入口引用完整' }
+foreach ($warn in $warns) { Write-Host "WARN $warn" }
+foreach ($fail in $fails) { Write-Host "FAIL $fail" }
 
-# 4. 文件長度
-Write-Host '[4] 文件長度'
-$limits = @{ '.ai/handoff.md' = 60; 'AGENTS.md' = 80; 'CLAUDE.md' = 40 }
-foreach ($rel in $limits.Keys) {
-  if (-not (Test-Path -LiteralPath (P $rel))) { continue }
-  $lines = @((Read-Utf8 $rel) -split "`n").Count
-  if ((Read-Utf8 $rel).EndsWith("`n")) { $lines -= 1 }
-  if ($lines -gt $limits[$rel]) { Fail "$rel 有 $lines 行，超過上限 $($limits[$rel])" } else { Ok "$rel $lines 行（上限 $($limits[$rel])）" }
-}
-if (Test-Path -LiteralPath (P 'AGENTS.md')) {
-  $size = (Get-Item -LiteralPath (P 'AGENTS.md')).Length
-  if ($size -gt 32768) { Fail "AGENTS.md $size bytes，超過 Codex 32 KiB 上限" }
+if ($fails.Count -gt 0)
+{
+	Write-Host "RESULT: FAILED ($($fails.Count) failure(s), $($warns.Count) warning(s))"
+	exit 1
 }
 
-# 5. 佔位符與 UTF-8
-Write-Host '[5] 佔位符與編碼'
-$docFiles = New-Object System.Collections.Generic.List[string]
-foreach ($rel in @('AGENTS.md', 'CLAUDE.md', 'AI_CONTEXT.md', 'MODEL_ROUTING.md', '.ai/handoff.md', 'docs/architecture.md', 'docs/decisions.md', 'docs/current-status.md', 'docs/changelog-ai.md')) {
-  if (Test-Path -LiteralPath (P $rel)) { $docFiles.Add($rel) | Out-Null }
-}
-foreach ($dir in @('.agents/harness', '.agents/skills', '.claude/agents', '.claude/skills')) {
-  if (-not (Test-Path -LiteralPath (P $dir))) { continue }
-  $base = (Resolve-Path -LiteralPath (P $dir)).Path
-  Get-ChildItem -LiteralPath $base -Recurse -File -Filter '*.md' | ForEach-Object {
-    $docFiles.Add(($dir + '/' + $_.FullName.Substring($base.Length + 1).Replace('\', '/'))) | Out-Null
-  }
-}
-$todoCount = 0
-foreach ($rel in $docFiles) {
-  $text = Read-Utf8 $rel
-  if ($text.Contains([char]0xFFFD)) { Fail "$rel 含替換字元 U+FFFD（可能亂碼）" }
-  if ($text -match '〈填入|<填入|\{\{[^}]+\}\}|PLACEHOLDER|待填入') { Fail "$rel 含未填寫的範本佔位符" }
-  $todos = [regex]::Matches($text, 'TODO\(project\)`?\s*[:：]')
-  if ($todos.Count -gt 0) {
-    $todoCount += $todos.Count
-    $msg = "$rel 有 $($todos.Count) 個 TODO(project)"
-    if ($Strict) { Fail $msg } else { Warn $msg }
-  }
-}
-Ok "掃描 $($docFiles.Count) 份文件；TODO(project) 共 $todoCount 個"
-
-# 6. 設定格式
-Write-Host '[6] 設定格式'
-function Read-Json([string]$rel) {
-  try { return ((Read-Utf8 $rel) | ConvertFrom-Json) } catch { Fail "$rel 不是有效 JSON：$($_.Exception.Message)"; return $null }
-}
-if (Test-Path -LiteralPath (P '.claude/settings.json')) {
-  $settings = Read-Json '.claude/settings.json'
-  if ($settings) {
-    $hookText = [string]($settings.hooks.UserPromptSubmit | ConvertTo-Json -Depth 10)
-    if (-not ($hookText -match 'model_router\.mjs')) { Fail '.claude/settings.json 未接上 model_router.mjs（UserPromptSubmit）' }
-    if ($settings.permissions.defaultMode -eq 'bypassPermissions') { Fail '.claude/settings.json 設定了 bypassPermissions' }
-    $deny = @($settings.permissions.deny)
-    foreach ($rule in @('Bash(git add .)', 'Bash(git add -A)')) { if ($deny -notcontains $rule) { Fail ".claude/settings.json permissions.deny 缺少 $rule" } }
-  }
-}
-if (Test-Path -LiteralPath (P '.agents/harness/skill-sync.json')) {
-  $sync = Read-Json '.agents/harness/skill-sync.json'
-  if ($sync) { foreach ($k in @('source', 'targets', 'shared', 'claudeOnly', 'codexOnly', 'ignore')) { if ($null -eq $sync.PSObject.Properties[$k]) { Fail "skill-sync.json 缺少欄位 $k" } } }
-}
-if (Test-Path -LiteralPath (P '.agents/harness/TEMPLATE_VERSION')) {
-  $ver = (Read-Utf8 '.agents/harness/TEMPLATE_VERSION').Trim()
-  if ($ver -notmatch '^harness-\d+\.\d+\.\d+$') { Fail "TEMPLATE_VERSION 格式不符：'$ver'" } else { Ok "TEMPLATE_VERSION $ver" }
-}
-foreach ($agent in @('fast-worker', 'developer', 'developer-deep', 'architect', 'architect-deep')) {
-  $rel = ".claude/agents/$agent.md"
-  if (-not (Test-Path -LiteralPath (P $rel))) { continue }
-  $text = Read-Utf8 $rel
-  if ($text -notmatch "(?s)^---\r?\n.*?name:\s*$agent\r?\n.*?\r?\n---") { Fail "$rel frontmatter 缺少或 name 不符" }
-}
-if (Test-Path -LiteralPath (P '.gitignore')) {
-  $gi = Read-Utf8 '.gitignore'
-  foreach ($pattern in @('.claude/settings.local.json', '.claude/worktrees/', '.ai/bench/')) {
-    if (-not $gi.Contains($pattern)) { Fail ".gitignore 缺少 $pattern" }
-  }
-} else { Fail '缺少 .gitignore' }
-
-# 7. 技能鏡像
-Write-Host '[7] 技能鏡像'
-$syncScript = P 'scripts/ai/sync-skills.ps1'
-if (Test-Path -LiteralPath $syncScript) {
-  $taskboardShell = if (Get-Command powershell -ErrorAction SilentlyContinue) { 'powershell' } else { 'pwsh' }
-  $out = & $taskboardShell -NoProfile -ExecutionPolicy Bypass -File $syncScript -Check -Root $Root 2>&1
-  if ($LASTEXITCODE -ne 0) { Fail 'sync-skills.ps1 -Check 失敗：'; $out | ForEach-Object { Write-Host "      $_" } }
-  else { Ok 'sync-skills.ps1 -Check 一致' }
-}
-
-Write-Host ''
-Write-Host "結果：$($script:errors.Count) 個失敗，$($script:warnings.Count) 個警告"
-if ($script:errors.Count -gt 0) { exit 1 }
+Write-Host "RESULT: OK ($($warns.Count) warning(s))"
 exit 0

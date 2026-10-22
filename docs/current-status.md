@@ -1,5 +1,69 @@
 # 目前狀態
 
+> 原地修改，反映「現在」。每次收工更新；歷史在 `changelog-ai.md`。需求進度表的規則見 `.agents/harness/engineering-workflow.md`「需求展開與進度表」。
+
+## 需求進度表
+
+| 編號 | 類型 | 需求／細項 | 狀態 | 計畫 | 分支／commit | 驗證 |
+|---|---|---|---|---|---|---|
+| R01 | 功能 | 看板基礎：桌面啟動器、主題 bridge、既有 session 唯讀同步、任務詳情 | ✅ | [ADR-001](adr/001-desktop-launcher-theme-bridge.md)、[ADR-003](adr/003-readonly-session-projection.md)、[ADR-004](adr/004-task-brief-runs-sessions.md) | 初始快照 `3a092ee`（早期無逐項 commit） | PARTIALLY VERIFIED：後端、主題、實際 App 回歸通過；真實模型派工 NOT VERIFIED |
+| R01.1 | | 桌面啟動器（mutex、專用 profile）與 Appearance token 即時同步到 iframe | ✅ | | | 實際 App 重開與色彩回歸 |
+| R01.2 | | 本機未封存 Codex session 同步為唯讀追蹤卡片，回合訊號與去重 | ✅ | | | 隔離 6/6、實際 86 張卡 |
+| R01.3 | | 詳情：需求簡介、逐次回報、多 session、後續對話延續或新對話 | ✅ | | | 隔離 DOM、後端 13/13 |
+| R02 | 功能 | 右側屬性、模型選單（`model/list`）、標籤與雙向相關議題 | ✅ | [ADR-005](adr/005-right-properties-model-relations.md) | 初始快照 `3a092ee`（推斷，當時未單獨提交） | PARTIALLY VERIFIED：17/17 後端、隔離 DOM；真實模型派工、原生側欄歸屬 NOT VERIFIED |
+| R03 | 功能 | Codex／Claude Code 雙工具、計畫匯入、依賴與排程 | ✅ | [ADR-006](adr/006-shared-execution-interface-claude-adapter.md)、[ADR-007](adr/007-http-keepalive-chunked.md)、[ADR-008](adr/008-plan-import-dependencies.md)、[ADR-016](adr/016-queue-timestamp-monotonic.md) | 初始快照 `3a092ee`；`df0e9e5` | PARTIALLY VERIFIED：後端、真實服務與 CLI 握手；`-p` session 於 App `/resume`、Remote Control NOT VERIFIED |
+| R03.1 | | `ToolAdapter`／`ClaudeAdapter`（`claude -p` stream-json、模型清單、核准、interrupt） | ✅ | | | 後端 30/30、模擬 CLI |
+| R03.2 | | HTTP/1.1 keep-alive 與 16 KB 分段寫出，修正大回應傳輸中斷 | ✅ | | | 80/80 連續讀取 |
+| R03.3 | | 計畫匯入（`POST /api/plans`、`plan_import.py`）、`task_dependencies`、完成後自動釋放、推理強度 | ✅ | | | 後端 36/36、真實服務 1.5.0 |
+| R03.4 | | 待辦排隊時間戳嚴格遞增 | ✅ | | `df0e9e5` | 後端測試 |
+| R04 | 功能 | Claude Code 看板窗格 mod（taskboard-pane）與全域安裝 | ✅ | [ADR-012](adr/012-claude-app-snapshot-sync.md)、[ADR-014](adr/014-global-claude-mod-install.md)、[ADR-015](adr/015-claude-session-root-localcache.md) | `cf3f1cf`、`f8d3bc1`、`df0e9e5` | PARTIALLY VERIFIED：本 session 熱載入通過；筆電與新 session 自動開啟 NOT VERIFIED |
+| R04.1 | | 窗格、`/taskboard`、建卡、`import_plan` 工具、`turn.start`／`turn.complete` 鏡像 | ✅ | | | mod validate／test |
+| R04.2 | | `setup-claude-mod.mjs` 同步全域副本並登記 `CLAUDE_CODE_PLUGIN_DIRS` | ✅ | | `cf3f1cf` | `--check` 就緒 |
+| R04.3 | | Store 版（MSIX）Claude App session 目錄改以套件 LocalCache 為優先 | ✅ | | `df0e9e5` | 真實服務可列出 session |
+| R05 | 功能 | 嵌入看板滑鼠拖曳與 Codex 原生自動審核 | ✅ | [ADR-009](adr/009-codex-native-auto-review.md)、[ADR-010](adr/010-embedded-board-pointer-drag.md) | 初始快照 `3a092ee`（推斷） | VERIFIED（隔離真實滑鼠六組、後端 42/42、專用 App 回歸）；未用真實卡片拖曳派工 |
+| R06 | 雜項 | repository 初始化與 GitHub 快照發布 | ✅ | [ADR-013](adr/013-github-connector-snapshot-publish.md) | `7d3174b`、`3a092ee`、`99b12d7` | VERIFIED：API 回讀與 git diff，遠端與本機 tree 相同 |
+| R07 | 功能 | 看板名字讀登入帳號、服務識別改用 meta 標記 | ✅ | | `595df88` | PARTIALLY VERIFIED：服務重啟與標題實測、Python 50 項；Codex App 視窗畫面 NOT VERIFIED |
+| R08 | 功能 | Claude App 對話鏡像為看板卡片 | ✅ | [ADR-017](adr/017-claude-app-mirror-runs.md)、[ADR-018](adr/018-mirror-card-brief-seed-once.md) | `af330e2` | VERIFIED：mod 事件真實送達、首句建卡進進行中 |
+| R08.1 | | `POST /api/claude-turns`：首句建卡、每句一筆 `mirror` run、回合結束進待審核 | ✅ | | | Python 57 項、mod 7 項 |
+| R08.2 | | 簡介／驗收條件由 haiku 擬稿一次，手改後鎖定（`brief` seed→drafted→manual） | ✅ | | | 隔離服務與 Browser 窗格 |
+| R08.3 | | 聊天紀錄回合摺疊與三種配色 | ✅ | | | Browser 窗格 |
+| R09 | 功能 | 回報渲染 Markdown 與 Mermaid（函式庫由安裝腳本下載並核對雜湊） | ✅ | [ADR-019](adr/019-vendored-frontend-lib-by-hash.md) | `1921dac`、`920d808` | VERIFIED：Python 67、Node 16；真實 Codex 內嵌 frame 繪圖成功、CSP 違規 0 |
+| R10 | 修正 | 服務重啟後嵌入看板不再卡在連線中斷、背景視窗不再反覆重建 | ✅ | | `8bfb6c9`、`5b5fccd`、`15bee16` | VERIFIED：以 Debugger.pause 重現；`taskboard-app.test.mjs` 4 項 PASS（視窗可見時） |
+| R11 | 修正 | 鏡像卡標題不再顯示 `<system-reminder>`，跟隨 Claude App 標題 | ✅ | [ADR-020](adr/020-mirror-card-title-follows-app.md) | `31ae150` | PARTIALLY VERIFIED：Python 70、隔離庫重現；App 實際改名端到端 NOT VERIFIED |
+| R12 | 功能 | 卡片 Session 心智圖與 Ctrl＋M 快捷鍵 | ✅ | | `cc5a93d`、`ed33669` | PARTIALLY VERIFIED：Browser 窗格隔離 fixture 實測；正式服務與 Codex 內嵌畫面未驗證 |
+| R13 | 功能 | Claude 派工改用 auto 權限模式、新 session 以需求命名 | ✅ | [ADR-021](adr/021-claude-auto-permission-mode.md) | `2284a2e`、`0cc1a0a` | PARTIALLY VERIFIED：真實派工 `permissionMode=auto`；核准往返 NOT VERIFIED |
+| R14 | 修正 | 詳情的 session 第一次提問改從 transcript 開頭讀取 | ✅ | | `633adcb` | PARTIALLY VERIFIED：Python 72；Codex 來源 session 與 Codex 內嵌畫面未驗證 |
+| R15 | 修正 | Claude App 倒回對話後沿用原鏡像卡，不再多建一張 | ✅ | | `4d362a2` | PARTIALLY VERIFIED：Python 76、正式服務讀回；未在 App 再倒回一次 |
+| R16 | 文件 | 操作手冊與 15／45 秒動態簡報影片、看板 README 章節化 | ✅ | [user-guide](user-guide.md) | `dbe0f23`、`c378be0` | PARTIALLY VERIFIED：兩支 MP4 在 Chrome 解碼；Windows 媒體播放器 NOT VERIFIED |
+| R17 | 功能 | GitHub AI PR／CI 與 Pages 展示 | ✅ | [ADR-022](adr/022-github-ai-pr-and-pages.md)、[github-automation](github-automation.md) | `896470a`（#1） | PARTIALLY VERIFIED：CI 三項與 Pages 通過；真實模型 job 與自動合併需 Secrets，未驗證 |
+| R18 | 功能 | 專案篩選合併清單、新式資料夾選擇視窗、需求附件 | ✅ | [ADR-023](adr/023-task-attachments.md) | `9ed444f`（#2） | PARTIALLY VERIFIED：Python 81、Node 30、隔離服務；`taskboard-details.test.mjs` 第 33 行在 baseline 即失敗（見 R23） |
+| R19 | 修正 | Claude worktree 與暫存資料夾不再成為專案名 | ✅ | | `50632a8`（#3）、`4a748d0` | VERIFIED：Python 82、正式資料唯讀試算 42 張卡；正式服務重啟結果見 `4a748d0` |
+| R20 | 修正 | 窗格下拉選單不再自己收起；Claude 卡片無群組為「未分組」 | ✅ | [ADR-024](adr/024-claude-card-project-from-app-group.md) | `4c4feed` | PARTIALLY VERIFIED：Python 84、mod 12、真實 App 讀到 39 群組；窗格下拉停留 10 秒須人工 |
+| R21 | 功能 | 看板開機自動啟動與斷線自動重啟（`watchdog.ps1`、`install-autostart.ps1`） | ✅ | | `01518e4` | PARTIALLY VERIFIED：排程建立、停服務 35 秒自動重啟；實際重開機後啟動 NOT VERIFIED |
+| R22 | 雜項 | 導入 AI 結構 2.0.0 | ✅ | [ADR-025](adr/025-ai-structure-v2.md) | 分支 `docs/ai-structure-v2`（已本機提交，未推送、未開 PR） | 見 R22.5 |
+| R22.1 | | 入口（AGENTS／CLAUDE）、project-rules（SOLID、四種輸出、Step Protocol、Git、Commit）、engineering-workflow、ai-handoff 換成 2.0.0 | ✅ | | | `check-ai-structure.ps1 -Strict` |
+| R22.2 | | `decisions.md` 拆成 `docs/adr/` 24 檔並改為索引；新增 ADR-025 | ✅ | | | 內文非空行數核對 126＝126 |
+| R22.3 | | 新增 `docs/00-master-plan.md`、`docs/plan/`、`docs/steps/_template/`、`tools/ste-lint.mjs`；本表回填 R01–R21 | ✅ | | | `node tools/ste-lint.mjs` |
+| R22.4 | | 保留專案專屬：`sync-skills.ps1`／`skill-sync.json`、模型路由案例與檢查、hook 環境變數、settings 接線、CI；`check-ai-structure.ps1` 補回專案檢查並修 Linux 路徑 | ✅ | | | 見 R22.5 |
+| R22.5 | | 驗證與提交 | ✅ | | `docs/ai-structure-v2` | 本機四項檢查通過；已本機提交（未推送、未開 PR）；Linux（CI）未驗證 |
+| R23 | 修正 | `tests/taskboard-details.test.mjs` 第 33 行 baseline 失敗（2026-10-14 記錄，之後未見處理） | ⚠️ | | | NOT VERIFIED（是否仍失敗未重跑） |
+| R24 | 雜項 | 補驗證缺口：窗格下拉選單停留 10 秒、實際重開機後自動啟動、Claude 核准往返、Claude 角色／hook 實際 model／effort | ⬜ | | | NOT VERIFIED（需人工或授權） |
+| R25 | 功能 | Git 分支／worktree 綁定、截止日期等（AI_CONTEXT 記為尚未實作；是否要做待決定） | ⬜ | | | |
+
+圖例：✅ 完成　⏳ 進行中　⬜ 尚未開始　⚠️ 有未解決問題　⛔ 取消
+
+回填說明：R01–R21 依 `docs/changelog-ai.md` 與 `git log`（至 `01518e4`）整理，只列主要細項；2026-10-11 的早期工作在初始快照 `3a092ee` 之前沒有逐項 commit，標「推斷」者是依 changelog 推出的歸屬。這些功能完成於 2.0.0 之前，不補計畫檔與四種輸出（見 ADR-025）。
+
+### 待使用者決定
+
+1. R22：2.0.0 的修改已在分支 `docs/ai-structure-v2` 本機提交（使用者決定本機提交不推送）；是否推送、開 PR 由使用者決定（有 remote 與 CI；`D:\CodexWork\TaskBoardTool` 主 checkout 另有他人未提交的 `.ai/handoff.md`、`.github/workflows/*` 修改，合併時要避開）。
+2. R24：哪些驗證缺口要排人工驗收（窗格下拉選單、重開機自動啟動、核准往返）。
+3. R23：`taskboard-details.test.mjs` 第 33 行失敗是否先修。
+4. R25：Git 分支／worktree 綁定要不要做。
+5. ADR-024 的伺服器端規則與舊卡跟隨：交接單（2026-10-14）寫正式服務尚未重啟，之後是否已重啟沒有紀錄，需確認。
+
+## 目前進度與歷史狀態（2.0.0 之前的紀錄，依日期由新到舊，內容保留）
+
 ## 2026-10-14：窗格下拉選單不再自己收起；Claude 卡片無群組為「未分組」
 
 - 問題 1（窗格 Select 打開後很快收起）：根因 VERIFIED。`refresh()` 每 5 秒把新物件（`updatedAt` 每次不同）寫入 snapshot，每次寫入都會重畫讀過它的窗格（型別檔 `$.state.set`：the sites that read it while drawing are drawn again）。新增回歸測試在修正前失敗：同一份看板輪詢 6 次寫了 6 次 snapshot（Expected 1, Received 7）。修正：`publish()` 只在內容（扣掉 updatedAt）改變時寫；新增表單開著時延後套用（核准請求、連線狀態改變例外），收起表單、建立後或按「重新整理」立即套用；表單內加靜態說明。型別檔的 Select 沒有開啟／關閉狀態可用。
