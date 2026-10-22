@@ -11,3 +11,7 @@ work/promo-video/verify/
 .ai/bench/
 .ai/router-state/
 outputs/taskboard/vendor/
+
+# AI agent local state
+CLAUDE.local.md
+perf/results/

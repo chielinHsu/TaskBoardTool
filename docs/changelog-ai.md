@@ -1,3 +1,15 @@
+# 2026-10-21：導入 AI 結構 2.0.0（Claude Code, Sonnet 5.5，worktree 分支 docs/ai-structure-v2）
+
+- 使用者要求把 AI 結構 2.0.0 套用到 TaskBoardTool（對應需求進度表 R22）。範本取自 `AutoCadCreated/ai-project-template`（2.0.0），先 `New-AiProject.ps1 -DryRun` 再 `-Refresh`，再合併專案擁有的檔案。
+- 新增：`docs/00-master-plan.md`、`docs/plan/_template.md`、`docs/steps/_template/`（五檔）、`docs/adr/_template.md`、`docs/adr/025-ai-structure-v2.md`、`tools/ste-lint.mjs`。
+- 搬移：`docs/decisions.md` 內嵌的 ADR-001 至 ADR-024 逐筆搬到 `docs/adr/NNN-slug.md`（內文不變，非空行數核對 126＝126），`decisions.md` 改成索引。
+- 換成範本：`engineering-workflow.md`（含「需求展開與進度表」）、`TEMPLATE_VERSION`（2.0.0）、`ai-handoff` skill（鏡像以 `sync-skills.ps1` 同步）。`check-ai-structure.ps1` 換成範本版後補回專案檢查，並把根目錄解析改成 `Split-Path`（範本的 `Join-Path $PSScriptRoot '..\..'` 在 Linux 的 pwsh 會失敗，CI 的 ubuntu job 會跑這個腳本）。
+- 合併：`AGENTS.md` 改成 bootloader（四條不可省略規則、必讀清單、本專案特別注意、Codex 專屬）；`CLAUDE.md` 補 2.0.0 的 Claude 專屬規則並保留匯入、hook、`launch.json` 說明；`project-rules.md` 保留原有規則，補 SOLID、四種輸出、Step Protocol、Git、Commit 訊息、文件與驗證；`AI_CONTEXT.md` 補目錄與 Context Routing；`MODEL_ROUTING.md` 與 architect 兩個 agent 補「計畫由主 agent 寫進需求進度表」。
+- 保留不換：`sync-skills.ps1`／`skill-sync.json`（舊格式，與範本不相容）、`check-model-routing.mjs`、`bench-model-routing.mjs`、hook 與 `TASKBOARD_ROUTER_*` 環境變數、`.claude/settings.json`、`.claude/launch.json`、`CODEX.md`、`.github/workflows`。
+- `docs/current-status.md` 開頭新增需求進度表（R01–R25；R01–R21 依 changelog 與 git log 回填）與「待使用者決定」，原有狀態段落保留在其後。
+- VERIFIED：`sync-skills.ps1`（1 項鏡像變更）與 `-Check` 一致；`check-ai-structure.ps1 -Strict` 0 失敗（1 個警告：current-status 超過 150 行）；`node scripts/ai/check-model-routing.mjs` 74/74；`node tools/ste-lint.mjs` 0 errors；負向測試移除 deny 規則會失敗。NOT VERIFIED：在 Linux pwsh 實際執行（本機沒有 pwsh，只靠 `Split-Path` 的寫法推斷）；Codex 與 Claude 實際載入新入口；`node scripts/ci/check.mjs` 的 Python 與展示部分未跑（本次沒改程式）。
+- 已在分支 `docs/ai-structure-v2` 本機提交，未推送、未開 PR（使用者決定本機提交不推送，開 PR 由使用者決定）；`D:\CodexWork\TaskBoardTool` 主 checkout 未動。
+
 # 2026-10-16：開機自動啟動與斷線自動重啟
 
 - 使用者回報看板會突然斷線、需手動重開。新增 `watchdog.ps1`（每 20 秒檢查，連續兩次無回應呼叫 `start.ps1 -NoBrowser`，mutex 單一實例，`.data/watchdog.pause` 暫停）、`watchdog.vbs` 隱藏啟動、`install-autostart.ps1`（每使用者登入排程工作 `CasparTaskboardWatchdog`，失敗時改「啟動」資料夾捷徑；`-Uninstall` 移除）。
