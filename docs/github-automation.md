@@ -23,7 +23,9 @@ Settings → Secrets and variables → Actions → Variables 設定 `AI_MODE`：
 3. 或 Actions → AI Task → Run workflow，填 `issue_number`。
 4. 模型在隔離 Linux runner 編輯與驗證，輸出完整檔案 JSON；另一個 job 驗證路徑、大小、格式與 main 的 base SHA，再建立分支和 PR、明確 dispatch CI。
 5. CI 在 Ubuntu／Windows 跑現有 Python、可攜 Node、路由／AI 結構檢查；另以 Chromium 驗證展示。
-6. 成功 CI 後，AI Review 只讀差異與相關程式碼，回傳結構化判斷。獨立 job 記錄 review、驗證合併條件、squash merge 並 dispatch Pages。
+6. 成功 CI 後，AI Review 只讀差異與目標分支固定 SHA 的程式碼快照，回傳結構化判斷。獨立 job 記錄 review、驗證合併條件、squash merge；只有合併到 main 才 dispatch Pages。
+
+本人／維護者在同一 repository 建立的 PR，可指向任意既有分支，例如 `feature/child → feature/parent`、`feature/x → develop` 或 `release/1.0`，不再限定 main。CI 涵蓋所有 PR 目標；建立、更新、重開、轉為非草稿或編輯 PR 時觸發。只有分支而沒有 PR，不會自動合併。Issue 的 AI Task 建立流程仍以 main 為目標。
 
 `/ai` 是本專案 workflow 指令，不需要安裝 Claude／Codex GitHub App；與官方 `@claude`／`@codex` 入口不同。不要對同一需求同時啟動兩套流程。
 
@@ -31,11 +33,12 @@ Settings → Secrets and variables → Actions → Variables 設定 `AI_MODE`：
 
 ## 自動合併條件
 
-- 同一 repository 的非 draft PR、目標 main、作者為維護者或本流程的 github-actions bot。
+- 同一 repository 的非 draft PR、目標為任意既有分支、作者為維護者或本流程的 github-actions bot。
 - 最新 commit 的最新 CI run 成功，審查／PR head／CI SHA 完全相同；merge API 另傳 SHA，防止審查後推送競態。
+- 審查記錄目標分支名稱及 base SHA，結案時必須一致；中途換目標或目標更新，舊審查即失效，需重跑 CI／審查。CI 含 PR 關聯資料時也核對 PR 編號／目標／base SHA；沒有關聯且同一 head 對應多個開啟中的 PR 時，不猜測對象，改由維護者 Actions → AI Review 明確填 `pr_number`。
 - 合法 JSON：`approved=true`、`findings=[]`；缺認證、拒絕、格式錯誤或不確定就不核准。
 - 修改在允許清單內。CI、部署、agent 規則／技能、啟動腳本、認證／私人資料不可由 AI Task 發布；`AI_CONTEXT.md`、`server.py`、`claude_adapter.py`、`tool_adapters.py` 涉及契約或權限邊界，保留人工審查／合併。
-- `AI_AUTO_MERGE=true`，GitHub 分支保護也允許合併。
+- `AI_AUTO_MERGE=true`，目標分支的 GitHub 保護規則也允許合併。
 
 AI 核准記錄為 `COMMENT` review；同一 bot 不能用 Approve 核准自己的 PR，所以合併依 required CI 和獨立 AI verdict 判斷。若另加 required human approvals，仍需要人類核准。
 
@@ -46,9 +49,12 @@ AI 核准記錄為 `COMMENT` review；同一 bot 不能用 Approve 核准自己�
 - Pages → Source：GitHub Actions；github-pages environment 限 main 部署。
 - Actions → General：允許 Actions 建立 PR，job 明列最小權限。
 - main 分支保護：require PR、require branches up to date，required checks：`verify (ubuntu-latest)`、`verify (windows-latest)`、`demo-browser`，禁止 force push 與刪除。
+- 其他目標分支沿用自己的 protection／ruleset；本修改不自動變更 GitHub 設定。若要對 develop／release 等分支強制人類核准或 required checks，需在那些分支的規則設定。
 - Secrets 依模式設定；沒有認證的模型 job 清楚失敗，不切換供應商。
 
-GITHUB_TOKEN 建立 PR／合併不會無條件引發其他 workflow，因此明確 dispatch ci.yml／pages.yml。一般 PR／main push 仍有 CI。[GitHub Token](https://docs.github.com/en/actions/concepts/security/github_token)、[Pages workflow](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)。
+GITHUB_TOKEN 建立 PR／合併不會無條件引發其他 workflow，因此建立 PR 明確 dispatch ci.yml，合併 main 明確 dispatch pages.yml。合併其他分支不啟動正式部署。一般 PR／main push 仍有 CI。[GitHub Token](https://docs.github.com/en/actions/concepts/security/github_token)、[Pages workflow](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)。
+
+AI Review 的程式與規則仍從受信任的 main 載入；模型另外唯讀檢視 `work/ai/base` 的目標分支快照，不執行快照內容。本變更需先發布到 main，才會成為 GitHub 使用的審查流程；舊分支上的 CI workflow 也需包含這次變更，才能對非 main 目標觸發 CI。
 
 ## 本機驗證
 

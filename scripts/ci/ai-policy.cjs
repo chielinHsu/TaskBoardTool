@@ -33,8 +33,9 @@ function autoEligible(files) {
     (f.status !== 'renamed' || permittedPath(f.previous_filename)) &&
     !['AI_CONTEXT.md', 'outputs/taskboard/server.py', 'outputs/taskboard/claude_adapter.py', 'outputs/taskboard/tool_adapters.py'].includes(f.filename || f.path));
 }
-function canMerge({approved, reviewedSha, currentSha, ciSha, ciConclusion, draft, sameRepo, base, eligible, enabled}) {
+function canMerge({approved, reviewedSha, currentSha, ciSha, ciConclusion, draft, sameRepo, base, reviewedBase, baseSha, reviewedBaseSha, eligible, enabled}) {
   return enabled === 'true' && approved === true && reviewedSha === currentSha && ciSha === currentSha &&
-    ciConclusion === 'success' && !draft && sameRepo && base === 'main' && eligible === true;
+    ciConclusion === 'success' && !draft && sameRepo && typeof base === 'string' && base.length > 0 &&
+    base === reviewedBase && typeof baseSha === 'string' && baseSha.length > 0 && baseSha === reviewedBaseSha && eligible === true;
 }
 module.exports = {routing, permittedPath, validateChanges, validateReview, autoEligible, canMerge};

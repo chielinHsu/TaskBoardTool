@@ -26,6 +26,8 @@ jobs:
       engine: ${{ steps.prepare.outputs.engine }}
       pr: ${{ steps.prepare.outputs.pr }}
       sha: ${{ steps.prepare.outputs.sha }}
+      base_ref: ${{ steps.prepare.outputs.base_ref }}
+      base_sha: ${{ steps.prepare.outputs.base_sha }}
       prompt: ${{ steps.prepare.outputs.prompt }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -63,6 +65,11 @@ jobs:
         with:
           name: review-diff
           path: work/ai
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          path: work/ai/base
+          persist-credentials: false
       - id: schema
         env:
           API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -97,6 +104,11 @@ jobs:
         with:
           name: review-diff
           path: work/ai
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          path: work/ai/base
+          persist-credentials: false
       - name: Check OpenAI credential
         env:
           API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -130,6 +142,8 @@ jobs:
           AI_RESULT: ${{ needs.claude.outputs.result || needs.codex.outputs.result }}
           PR_NUMBER: ${{ needs.prepare.outputs.pr }}
           REVIEWED_SHA: ${{ needs.prepare.outputs.sha }}
+          REVIEWED_BASE_REF: ${{ needs.prepare.outputs.base_ref }}
+          REVIEWED_BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
           REVIEW_ENGINE: ${{ needs.prepare.outputs.engine }}
           AI_AUTO_MERGE: ${{ vars.AI_AUTO_MERGE }}
         with:
