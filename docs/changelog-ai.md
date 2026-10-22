@@ -1,3 +1,9 @@
+# 2026-10-22：提交並發布「PR 自動合併支援其他目標分支」（Claude Code, Opus 5.5）
+
+- 使用者要求把主 checkout 裡未提交的 11 個檔案（2026-10-15 的「PR 自動合併支援其他目標分支」）提交並推送。在 `feat/pr-automerge-any-base` 提交後 rebase 到 main `76c2e0a`（AI 結構 2.0.0 已合併）。
+- 衝突處理：原作者的 ADR-025 與主線 ADR-025（導入 AI 結構 2.0.0）撞號，改為 ADR-026 並拆成 `docs/adr/026-pr-automerge-any-base.md`、加入索引；需求進度表新增 R26、R22 改為已合併；原日期段落移到歷史段落；交接單改寫成本次狀態。程式、workflow 與測試沒有衝突。
+- 驗證見本次 commit 的「測試」段；推送後開 PR，依 project-rules 以 `--auto --rebase` 在 CI 通過後合併。
+
 # 2026-10-21：導入 AI 結構 2.0.0（Claude Code, Sonnet 5.5，worktree 分支 docs/ai-structure-v2）
 
 - 使用者要求把 AI 結構 2.0.0 套用到 TaskBoardTool（對應需求進度表 R22）。範本取自 `AutoCadCreated/ai-project-template`（2.0.0），先 `New-AiProject.ps1 -DryRun` 再 `-Refresh`，再合併專案擁有的檔案。
@@ -14,6 +20,13 @@
 
 - 使用者回報看板會突然斷線、需手動重開。新增 `watchdog.ps1`（每 20 秒檢查，連續兩次無回應呼叫 `start.ps1 -NoBrowser`，mutex 單一實例，`.data/watchdog.pause` 暫停）、`watchdog.vbs` 隱藏啟動、`install-autostart.ps1`（每使用者登入排程工作 `CasparTaskboardWatchdog`，失敗時改「啟動」資料夾捷徑；`-Uninstall` 移除）。
 - VERIFIED：本機非管理員建立排程成功；`stop.ps1` 停服務後約 35 秒自動重啟；`-Uninstall` 移除排程並結束看門狗後重裝。NOT VERIFIED：實際重新開機／登出後的自動啟動。
+
+# 2026-10-15：PR 自動合併支援其他目標分支
+
+- CI、PR 篩選與合併 gate 解除 main 目標限制；審查固定 base ref／SHA，唯讀目標快照，合併前拒絕目標或版本改變。來源與敏感檔範圍限制維持。
+- 同 head 多 PR 依 CI 關聯選取，無法唯一對應則停止；只有 main 合併部署 Pages。新增 ADR-026 及架構前後圖。
+- VERIFIED：Python 82、Node 31、路由 74、展示建置、Strict 結構／鏡像、Actionlint 1.7.12、diff 檢查。NOT VERIFIED：真實多目標 GitHub 流程，未發布／未耗模型額度。
+- 本機 Store Python 入口與沙箱 Git ownership 首次失敗，分別以內建 Python、程序限定 safe.directory 完成驗證；未改全域設定。
 
 # 2026-10-14：窗格下拉選單不再自己收起；Claude 卡片無群組為「未分組」
 

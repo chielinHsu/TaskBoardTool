@@ -40,12 +40,13 @@
 | R19 | 修正 | Claude worktree 與暫存資料夾不再成為專案名 | ✅ | | `50632a8`（#3）、`4a748d0` | VERIFIED：Python 82、正式資料唯讀試算 42 張卡；正式服務重啟結果見 `4a748d0` |
 | R20 | 修正 | 窗格下拉選單不再自己收起；Claude 卡片無群組為「未分組」 | ✅ | [ADR-024](adr/024-claude-card-project-from-app-group.md) | `4c4feed` | PARTIALLY VERIFIED：Python 84、mod 12、真實 App 讀到 39 群組；窗格下拉停留 10 秒須人工 |
 | R21 | 功能 | 看板開機自動啟動與斷線自動重啟（`watchdog.ps1`、`install-autostart.ps1`） | ✅ | | `01518e4` | PARTIALLY VERIFIED：排程建立、停服務 35 秒自動重啟；實際重開機後啟動 NOT VERIFIED |
-| R22 | 雜項 | 導入 AI 結構 2.0.0 | ✅ | [ADR-025](adr/025-ai-structure-v2.md) | 分支 `docs/ai-structure-v2`（已本機提交，未推送、未開 PR） | 見 R22.5 |
+| R22 | 雜項 | 導入 AI 結構 2.0.0 | ✅ | [ADR-025](adr/025-ai-structure-v2.md) | PR #7 `76c2e0a`（已合併到 main） | 見 R22.5 |
 | R22.1 | | 入口（AGENTS／CLAUDE）、project-rules（SOLID、四種輸出、Step Protocol、Git、Commit）、engineering-workflow、ai-handoff 換成 2.0.0 | ✅ | | | `check-ai-structure.ps1 -Strict` |
 | R22.2 | | `decisions.md` 拆成 `docs/adr/` 24 檔並改為索引；新增 ADR-025 | ✅ | | | 內文非空行數核對 126＝126 |
 | R22.3 | | 新增 `docs/00-master-plan.md`、`docs/plan/`、`docs/steps/_template/`、`tools/ste-lint.mjs`；本表回填 R01–R21 | ✅ | | | `node tools/ste-lint.mjs` |
 | R22.4 | | 保留專案專屬：`sync-skills.ps1`／`skill-sync.json`、模型路由案例與檢查、hook 環境變數、settings 接線、CI；`check-ai-structure.ps1` 補回專案檢查並修 Linux 路徑 | ✅ | | | 見 R22.5 |
-| R22.5 | | 驗證與提交 | ✅ | | `docs/ai-structure-v2` | 本機四項檢查通過；已本機提交（未推送、未開 PR）；Linux（CI）未驗證 |
+| R22.5 | | 驗證與提交 | ✅ | | PR #7 | 本機四項檢查通過；CI 三項（含 ubuntu pwsh 結構檢查）通過後 rebase 合併 |
+| R26 | 功能 | PR 自動合併支援其他目標分支（CI 接受所有 PR 目標、審查固定 base ref／SHA、只有 main 部署 Pages） | ✅ | [ADR-026](adr/026-pr-automerge-any-base.md)、[github-automation](github-automation.md) | `feat/pr-automerge-any-base`（PR，CI 通過後自動合併） | PARTIALLY VERIFIED：scripts/ci/check.mjs 與 Actionlint 通過；真實多目標 GitHub 流程未驗證 |
 | R23 | 修正 | `tests/taskboard-details.test.mjs` 第 33 行 baseline 失敗（2026-10-14 記錄，之後未見處理） | ⚠️ | | | NOT VERIFIED（是否仍失敗未重跑） |
 | R24 | 雜項 | 補驗證缺口：窗格下拉選單停留 10 秒、實際重開機後自動啟動、Claude 核准往返、Claude 角色／hook 實際 model／effort | ⬜ | | | NOT VERIFIED（需人工或授權） |
 | R25 | 功能 | Git 分支／worktree 綁定、截止日期等（AI_CONTEXT 記為尚未實作；是否要做待決定） | ⬜ | | | |
@@ -56,13 +57,22 @@
 
 ### 待使用者決定
 
-1. R22：2.0.0 的修改已在分支 `docs/ai-structure-v2` 本機提交（使用者決定本機提交不推送）；是否推送、開 PR 由使用者決定（有 remote 與 CI；`D:\CodexWork\TaskBoardTool` 主 checkout 另有他人未提交的 `.ai/handoff.md`、`.github/workflows/*` 修改，合併時要避開）。
+1. R26：PR 合併後，用小 PR 驗收非 main 目標（例如 develop）的 CI 與自動合併；其他分支的 protection／ruleset 要不要設定。
 2. R24：哪些驗證缺口要排人工驗收（窗格下拉選單、重開機自動啟動、核准往返）。
 3. R23：`taskboard-details.test.mjs` 第 33 行失敗是否先修。
 4. R25：Git 分支／worktree 綁定要不要做。
 5. ADR-024 的伺服器端規則與舊卡跟隨：交接單（2026-10-14）寫正式服務尚未重啟，之後是否已重啟沒有紀錄，需確認。
 
 ## 目前進度與歷史狀態（2.0.0 之前的紀錄，依日期由新到舊，內容保留）
+
+## 2026-10-15：PR 自動合併支援其他目標分支
+
+- 使用者要求本人／維護者的 PR 指向其他分支時，也能走 CI＋AI 審查後自動合併。CI 移除 main 目標篩選，AI Review 與 canMerge 接受任意既有目標；保留同 repo／維護者／非草稿／檔案範圍 gate。
+- 審查固定目標 ref／base SHA，模型另讀目標程式碼快照，控制程式與規則仍讀 main。結案時 head、目標及 base SHA 必須與審查一致；CI 有關聯資料時檢查 PR／目標。同 head 多 PR 無法唯一對應時停止，需明確指定 PR。
+- 僅 main 合併啟動 Pages；其他目標不部署。Issue AI Task 仍建立到 main；GitHub 其他分支 protection／ruleset 未更動。架構前後圖與 ADR-026 已記錄。
+- VERIFIED：完整 scripts/ci/check.mjs（Python 82、Node 31、路由 74、展示建置）；Actionlint 1.7.12 兩份 workflow 通過；Strict 結構／技能鏡像與 git diff --check 通過。
+- 實際失敗：py -3 指向失效 Store Python，改內建 Python 全部通過；Strict 初次被沙箱 Git ownership 阻擋，改用單次程序 safe.directory 通過；缺 PyYAML 改用官方 Actionlint，下載已核對 SHA-256。
+- NOT VERIFIED：真實 GitHub 多目標 CI／模型審查／合併。2026-10-22 依使用者要求提交到 `feat/pr-automerge-any-base`、推送並開 PR（R26）；舊分支 CI 也需包含新版 workflow 才會對非 main 目標觸發。
 
 ## 2026-10-14：窗格下拉選單不再自己收起；Claude 卡片無群組為「未分組」
 

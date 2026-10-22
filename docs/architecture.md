@@ -1,5 +1,36 @@
 # 目前架構
 
+## PR 自動合併支援其他目標分支（ADR-026，2026-10-15）
+
+修改前，CI 與審查／合併都只接受 main：
+
+```mermaid
+flowchart LR
+ PR[PR 到 main] --> CI[CI 通過]
+ CI --> Review[讀 main 與 diff]
+ Review --> Gate[head SHA／AI 核准／允許範圍]
+ Gate --> Merge[合併 main]
+ Merge --> Pages[Pages 部署]
+ Other[PR 到其他分支] --> Stop[不觸發自動流程]
+```
+
+修改後，程式與規則保持從 main 載入，目標快照固定 base SHA：
+
+```mermaid
+flowchart LR
+ PR[PR 到任意分支] --> CI[所有 PR 目標跑 CI]
+ CI --> Select[依 head 與 CI 關聯唯一選 PR]
+ Select --> Pin[記錄目標 ref／base SHA]
+ Pin --> Review[唯讀 diff 與目標快照]
+ Review --> Gate[核對 head／base／最新 CI／AI／範圍]
+ Gate --> Merge[帶 head SHA 合併到 PR 目標]
+ Merge --> Main{目標 main？}
+ Main -->|是| Pages[Pages 部署]
+ Main -->|否| Done[完成，不部署]
+```
+
+目標 ref／base SHA 變更時拒絕舊 verdict；CI 有關聯資料時同步檢查目標，同 head 多 PR 且無法唯一對應時需明確指定 PR。GitHub 合併 API 原子比對 head SHA；base 更新的最後競態仍依目標分支 protection／ruleset 控制。外部 fork、草稿與敏感檔案不進自動合併，Issue AI Task 仍建立到 main。
+
 ## GitHub 工程自動化與 Pages 展示（ADR-022）
 
 修改前沒有 GitHub workflow，本機流程：

@@ -1,45 +1,43 @@
-# 交接（2026-10-21）：導入 AI 結構 2.0.0
+# 交接（2026-10-22）：PR 自動合併支援其他目標分支
 
-> 覆寫式交接單；歷史在 `docs/changelog-ai.md`。進度的單一事實來源是 `docs/current-status.md` 的需求進度表。
-
-- 最後一位 agent：Claude Code (Sonnet 5.5)
-- 日期：2026-10-21，分支 `docs/ai-structure-v2`（worktree，基於 main `01518e4`）
+> 覆寫式交接單；歷史在 `docs/changelog-ai.md`。進度的單一事實來源是 `docs/current-status.md` 的需求進度表（R26）。
 
 ## 正在做
-
-導入 AI 結構 2.0.0（進度表 R22）。文件與檢查腳本已完成並通過本機檢查，已在分支 `docs/ai-structure-v2` 本機提交；未推送、未開 PR（使用者決定本機提交不推送，開 PR 由使用者決定）。
+2026-10-15 本機實作與驗證完成；2026-10-22 依使用者要求在 `feat/pr-automerge-any-base` 提交（rebase 到 main `76c2e0a`，即 AI 結構 2.0.0 已合併之後）、推送並開 PR，CI 通過後自動 rebase 合併。
 
 ## 已完成
-
-- 入口：`AGENTS.md` bootloader（四條規則）、`CLAUDE.md`、`project-rules.md`（SOLID、四種輸出、Step Protocol、Git、Commit 訊息）。
-- `docs/decisions.md` 拆成 `docs/adr/` 24 檔加索引，新增 ADR-025；新增 `docs/00-master-plan.md`、`docs/plan/`、`docs/steps/_template/`、`tools/ste-lint.mjs`。
-- `docs/current-status.md` 開頭為需求進度表（R01–R25）與待使用者決定。
-- `check-ai-structure.ps1` 換成 2.0.0 並補回專案檢查、修 Linux 根目錄解析。
+- CI 接受所有 PR 目標，加入 ready_for_review／edited 事件。
+- AI Review 接受同 repo、維護者／bot 的非草稿 PR，保留檔案允許範圍。
+- 固定目標 ref／base SHA，模型唯讀目標快照；控制程式與規則仍讀 main。
+- 結案檢查 head／base／最新 CI；目標變更拒絕舊 verdict，同 head 多 PR 無法唯一選取時需明確指定 PR。
+- 僅合併 main 才 dispatch Pages，其他目標不部署。Issue AI Task 仍以 main 為目標。
+- 更新流程文件、架構前後圖、ADR-026、狀態與 changelog。
 
 ## 驗證
-
-- VERIFIED：`sync-skills.ps1`／`-Check`、`check-ai-structure.ps1 -Strict`（0 失敗、1 警告）、`check-model-routing.mjs` 74/74、`ste-lint` 0 errors。
-- NOT VERIFIED：Linux pwsh 實際執行；Codex／Claude 實際載入；`scripts/ci/check.mjs` 全套（未改程式，未跑）。
+- VERIFIED：scripts/ci/check.mjs 完整通過（Python 82、Node 31、路由 74、展示建置）。
+- VERIFIED：Actionlint 1.7.12 檢查兩份修改 workflow 通過（官方下載、SHA-256 核對；未使用 shellcheck／pyflakes）。
+- VERIFIED：Strict 結構／技能鏡像與 git diff --check 通過。
+- 涵蓋非 main 目標、main 部署、非 main 不部署、目標／base 更新、不同 PR／分支 CI、失敗 CI、fork／敏感檔／草稿拒絕。
+- NOT VERIFIED：GitHub 真實多目標 CI／模型審查／合併；未消耗模型額度。
 
 ## 下一步
-
-1. 使用者決定是否推送並開 PR；開 PR 後 CI 的 `verify` job 會在 ubuntu 與 windows 跑結構檢查，留意結果（Linux 尚未驗證）。
-2. 使用者決定進度表 R23–R25（baseline 失敗測試、驗證缺口、Git 綁定）。
+確認 PR 的 CI 與合併結果；合併後主 checkout 切回 main 同步。
+舊分支 CI 需包含新版 workflow，才會對非 main 目標觸發；發布後用小 PR 驗收 develop 等目標。
 
 ## 相關檔案
-
-`AGENTS.md`、`CLAUDE.md`、`AI_CONTEXT.md`、`MODEL_ROUTING.md`、`.agents/harness/*`、`.claude/agents/architect*.md`、`scripts/ai/check-ai-structure.ps1`、`docs/00-master-plan.md`、`docs/current-status.md`、`docs/decisions.md`、`docs/adr/`、`docs/plan/`、`docs/steps/_template/`、`tools/ste-lint.mjs`。
+.github/workflows/{ci,ai-review}.yml、scripts/ci/{ai-policy,github-automation}.cjs、tests/ai-automation.test.mjs、docs/github-automation.md。
 
 ## 不要動
+真實任務、SQLite、session、認證、官方 App；不提交 work/、vendor/、.data/。
 
-真實任務資料（`.data`、SQLite、profile、token）、官方 App 安裝檔；`sync-skills.ps1`／`skill-sync.json` 是專案舊格式，不要換成範本版（不相容）；`check-ai-structure.ps1` 刷新範本後要重新補回專案檢查（見 ADR-025）。
+## 已知問題／實際失敗
+- py -3 的 Store Python 入口失效，改用內建 Python 完成全部檢查。
+- 沙箱 Git ownership 使 Strict 初次中止；以程序限定 safe.directory 通過，未改全域設定。
+- 內建 Python 無 PyYAML；改用 Actionlint 驗證 workflow。
+- 既有 taskboard-details.test.mjs:33 baseline 失敗未處理；本次未重跑桌面 DOM 測試。
+- 先前 squash 作者信箱與 GitHub 隱私設定問題仍待查，非本次範圍。
 
-## 已知問題
-
-- `docs/current-status.md` 337 行，超過檢查的 150 行建議值（只是警告）；舊狀態段落保留。
-- `tests/taskboard-details.test.mjs` 第 33 行 baseline 失敗（2026-10-14 記錄，未重跑）。
-
-## 未提交變更／假設
-
-- 無（本次修改已提交）。`D:\CodexWork\TaskBoardTool` 主 checkout 有他人未提交的 `.ai/handoff.md`、`.github/workflows/*` 修改，本次未碰，合併時要避開（本檔會與主 checkout 未提交的 handoff 衝突）。
-- 假設：`Co-Authored-By` 在 Codex 提交沿用先例寫 `Codex`（見 `896470a`）。
+## 未提交變更／假設與限制
+無（本次修改已提交）。原本在主 checkout 的 11 個未提交檔案，2026-10-22 依使用者要求提交。
+原驗證基準 HEAD=4a748d0；整合到主線時以 rebase 合併文件衝突（decisions 索引、需求進度表、交接單）；ADR-024 已被該提交使用，本次原用 ADR-025；整合到主線時 ADR-025 已是「導入 AI 結構 2.0.0」，改為 ADR-026。未覆寫或拉回其他功能。
+其他分支 protection／ruleset 未變更；merge API 原子比對 head SHA，base 更新最後競態仍依 GitHub 分支規則。
