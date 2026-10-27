@@ -1,43 +1,35 @@
-# 交接（2026-10-22）：PR 自動合併支援其他目標分支
+# 交接（2026-10-27）：AI 結構 3.0.0（每個計畫一個資料夾）
 
-> 覆寫式交接單；歷史在 `docs/changelog-ai.md`。進度的單一事實來源是 `docs/current-status.md` 的需求進度表（R26）。
+> 覆寫式交接單：每次收工整份重寫，保持在 60 行內。計畫的進度與接續資訊在各計畫的 `status.md`（入口 `docs/plans/INDEX.md`），這裡不重抄；2.x 的紀錄在 `docs/legacy/`。
 
-## 正在做
-2026-10-15 本機實作與驗證完成；2026-10-22 依使用者要求在 `feat/pr-automerge-any-base` 提交（rebase 到 main `76c2e0a`，即 AI 結構 2.0.0 已合併之後）、推送並開 PR，CI 通過後自動 rebase 合併。
+- 最後一位 agent：Claude Code (Claude Sonnet 5.5)
+- 日期：2026-10-27
 
-## 已完成
-- CI 接受所有 PR 目標，加入 ready_for_review／edited 事件。
-- AI Review 接受同 repo、維護者／bot 的非草稿 PR，保留檔案允許範圍。
-- 固定目標 ref／base SHA，模型唯讀目標快照；控制程式與規則仍讀 main。
-- 結案檢查 head／base／最新 CI；目標變更拒絕舊 verdict，同 head 多 PR 無法唯一選取時需明確指定 PR。
-- 僅合併 main 才 dispatch Pages，其他目標不部署。Issue AI Task 仍以 main 為目標。
-- 更新流程文件、架構前後圖、ADR-026、狀態與 changelog。
+## 上一個 session 動到的計畫
 
-## 驗證
-- VERIFIED：scripts/ci/check.mjs 完整通過（Python 82、Node 31、路由 74、展示建置）。
-- VERIFIED：Actionlint 1.7.12 檢查兩份修改 workflow 通過（官方下載、SHA-256 核對；未使用 shellcheck／pyflakes）。
-- VERIFIED：Strict 結構／技能鏡像與 git diff --check 通過。
-- 涵蓋非 main 目標、main 部署、非 main 不部署、目標／base 更新、不同 PR／分支 CI、失敗 CI、fork／敏感檔／草稿拒絕。
-- NOT VERIFIED：GitHub 真實多目標 CI／模型審查／合併；未消耗模型額度。
+- R27（AI 結構 3.0.0，已完成）：[`docs/plans/completed/R27-ai-structure-v3/`](../docs/plans/completed/R27-ai-structure-v3/plan.md)。決策 ADR-027。
+- R23–R25 從 2.x 的需求進度表遷移成計畫，內容沒有變。
 
-## 下一步
-確認 PR 的 CI 與合併結果；合併後主 checkout 切回 main 同步。
-舊分支 CI 需包含新版 workflow，才會對非 main 目標觸發；發布後用小 PR 驗收 develop 等目標。
+## 接下來
 
-## 相關檔案
-.github/workflows/{ci,ai-review}.yml、scripts/ci/{ai-policy,github-automation}.cjs、tests/ai-automation.test.mjs、docs/github-automation.md。
+- 沒有進行中的實作；R23–R25 都在等使用者決定或人工操作：[R23 受阻](../docs/plans/active/R23-details-test-baseline-failure/status.md)、[R24](../docs/plans/active/R24-verification-gaps/status.md)、[R25](../docs/plans/active/R25-git-branch-worktree-binding/status.md)。
+- 跨計畫的已知問題與待使用者決定（含 R26 的後續）見 [`docs/current-status.md`](../docs/current-status.md)。
 
 ## 不要動
-真實任務、SQLite、session、認證、官方 App；不提交 work/、vendor/、.data/。
 
-## 已知問題／實際失敗
-- py -3 的 Store Python 入口失效，改用內建 Python 完成全部檢查。
-- 沙箱 Git ownership 使 Strict 初次中止；以程序限定 safe.directory 通過，未改全域設定。
-- 內建 Python 無 PyYAML；改用 Actionlint 驗證 workflow。
-- 既有 taskboard-details.test.mjs:33 baseline 失敗未處理；本次未重跑桌面 DOM 測試。
-- 先前 squash 作者信箱與 GitHub 隱私設定問題仍待查，非本次範圍。
+- 真實任務、SQLite、session、認證、官方 App；不提交 `work/`、`vendor/`、`.data/`。
+- 範本管理的檔案不要在專案裡改：`engineering-workflow.md`、`TEMPLATE_VERSION`、`.agents/skills/ai-handoff/`、`sync-skills.ps1`、`migrate-ai-structure-3.mjs`、`tools/ste-lint.mjs`、各 `_template`。
+- `docs/legacy/` 只讀；`docs/adr/` 的 ADR-001 至 ADR-026 不改，新決策從 028 接續。
+- `AGENTS.md` 的「Codex 專屬」一節與 `CODEX.md`：Codex 不讀上層 `D:\CodexWork\CLAUDE.md`，提交身分與格式寫在 `project-rules.md`。
 
-## 未提交變更／假設與限制
-無（本次修改已提交）。原本在主 checkout 的 11 個未提交檔案，2026-10-22 依使用者要求提交。
-原驗證基準 HEAD=4a748d0；整合到主線時以 rebase 合併文件衝突（decisions 索引、需求進度表、交接單）；ADR-024 已被該提交使用，本次原用 ADR-025；整合到主線時 ADR-025 已是「導入 AI 結構 2.0.0」，改為 ADR-026。未覆寫或拉回其他功能。
-其他分支 protection／ruleset 未變更；merge API 原子比對 head SHA，base 更新最後競態仍依 GitHub 分支規則。
+## 未提交的變更
+
+- 本次修改未提交、未推送，由主 session 查核後提交（分支 `docs/ai-structure-v3`，從 main 開出；有 GitHub remote 與 CI）。
+
+## 假設與未驗證項目
+
+- 沒有跑 `scripts/ci/check.mjs`、Python／Node 測試：本次沒有改程式原始碼。
+- `skill-sync.json` 換成範本格式（原本是 `source`／`targets`／`shared`）；ADR-025 補回的 `check-ai-structure.ps1` 專屬檢查一度被範本版覆蓋，已還原並改成 3.0.0，登記在 `.agents/harness/template-overrides.txt`（專案自己維護，範本升級時手動合併），見 ADR-027；3.0.0 結構檢查在 GitHub CI（Linux pwsh）上是否通過未驗證，推送前建議先在本機確認，推送後看 CI。
+- R23–R25 在舊進度表只有頂層一列，細項（R23.1 等）是遷移時補的編號，內容照抄舊列。
+- 2026-10-22 交接單的細節（R26 的驗證數字與失敗紀錄）封存在 `docs/legacy/current-status.md`；R26 已合併到 main（`02b2b3b`）。
+- Codex 端沒有實測新的入口。

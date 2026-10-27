@@ -1,6 +1,6 @@
 # 專案規則
 
-本檔放「這個專案的慣例」。流程在 `engineering-workflow.md`，專案事實在 `AI_CONTEXT.md`。結構版本 2.0.0（見 `.agents/harness/TEMPLATE_VERSION`、`docs/adr/025-ai-structure-v2.md`）；本專案原有的規則保留在「專案原有規則」與各段落，沒有因為導入 2.0.0 而刪除。
+本檔放「這個專案的慣例」。流程在 `engineering-workflow.md`，專案事實在 `AI_CONTEXT.md`。結構版本 3.0.0（見 `.agents/harness/TEMPLATE_VERSION`、`docs/adr/025-ai-structure-v2.md`、`docs/adr/027-ai-structure-v3.md`）；本專案原有的規則保留在「專案原有規則」與各段落，沒有因為導入 2.0.0 而刪除。
 
 ## 專案原有規則（保留）
 
@@ -34,7 +34,7 @@
 
 目的：讓讀者清楚知道這個設計的**目的（Purpose）、原因（Reason）、效果（Effect）**。放在 `docs/steps/<ID>-<slug>/`，範本在 `docs/steps/_template/`。
 
-**適用範圍**：Step Protocol 的步驟，以及 `docs/current-status.md` 需求進度表中類型標為「功能」的需求。**小修正（fix、docs、chore、refactor 等）免四種輸出**，只要依 `ai-handoff` skill 更新進度表、交接單與 changelog。（導入 2.0.0 之前完成的功能不補四種輸出，見 ADR-025。）
+**適用範圍**：Step Protocol 的步驟，以及類型為「功能」的計畫（`plan.md` 的 frontmatter `type`）。**小修正（fix、docs、chore、refactor 等）免四種輸出**，只要依 `ai-handoff` skill 更新計畫的細項表、`status.md`、`changelog.md` 與交接單。（導入 2.0.0 之前完成的功能不補四種輸出，見 ADR-025。）
 
 | # | 輸出 | 檔案 | 要求 |
 |---|---|---|---|
@@ -47,15 +47,15 @@
 
 ## Step Protocol（每完成一個步驟必做；不要在同一個 session 連做下一步）
 
-步驟 ID `<ID>` 用總體計畫（`docs/00-master-plan.md`）的編號；本專案目前沒有預先排好的步驟，需求進度表的 `Rnn` 若自成一步（跨多個 session 的功能）就當 ID。
+步驟 ID `<ID>` 用總體計畫（`docs/00-master-plan.md`）的編號；本專案目前沒有預先排好的步驟，計畫的 `Rnn`（見 `docs/plans/INDEX.md`）若自成一步（跨多個 session 的功能）就當 ID。
 
-1. 開工：讀 `docs/current-status.md`（需求進度表）與 `docs/plan/<ID>-*.md`。從預設分支（`main`）建立分支 `feat/…`／`fix/…`（本專案沿用此命名，不用範本的 `step/NN-slug`）；把本步驟在進度表裡的列標為 ⏳。
+1. 開工：讀 `docs/plans/INDEX.md`，再讀該計畫（`docs/plans/active/<ID>-<slug>/`）的 `plan.md` 與 `status.md`。從預設分支（`main`）建立分支 `feat/…`／`fix/…`（本專案沿用此命名，不用範本的 `step/NN-slug`）；把本步驟在計畫細項表裡的列標為 ⏳。
 2. 實作，並同時產出四種輸出與 `perf.md`（依上方適用範圍）。
-3. 驗證：依下方「驗證」段落與該步驟 plan 檔「完成定義」；有四種輸出時加跑 `node tools/ste-lint.mjs`。**失敗就如實回報，不要宣稱完成。**
-4. 更新 `docs/current-status.md`（需求進度表該列改 ✅，補分支／commit 與驗證），並依 `ai-handoff` skill 更新 `.ai/handoff.md` 與 `docs/changelog-ai.md`。
+3. 驗證：依下方「驗證」段落與該計畫 `plan.md`「完成定義」；有四種輸出時加跑 `node tools/ste-lint.mjs`。**失敗就如實回報，不要宣稱完成。**
+4. 依 `ai-handoff` skill 更新該計畫：細項表改 ✅（補分支／commit 與驗證）、`status.md`、`changelog.md`；計畫完成就把資料夾搬到 `docs/plans/completed/` 並更新 `INDEX.md`；最後覆寫 `.ai/handoff.md`。
 5. Commit（格式見下方「Commit 訊息」），之後的推送、PR 與合併依下方「Git」的授權流程；**不使用範本預設的本機 `merge --no-ff` 與 `step-NN-done` tag**，因為本專案的 `main` 由 PR 的 rebase 合併進入。
 6. 對使用者**提示 commit 內容**：commit hash、訊息、變更檔案摘要、效能結果、未解決事項。
-7. 為下一步建立新 session（prompt 取自**下一步** plan 檔底部的「Start prompt」，並提醒新 session 回覆使用繁體中文）：Claude Code 用 `start_session` 或 `spawn_task`（工具可用時）；Codex 或工具不可用時，把 prompt 印出來讓使用者貼上。**到此為止，不要接著做下一步。**
+7. 為下一步建立新 session（prompt 取自**下一步**計畫 `plan.md` 底部的「Start prompt」，並提醒新 session 回覆使用繁體中文）：Claude Code 用 `start_session` 或 `spawn_task`（工具可用時）；Codex 或工具不可用時，把 prompt 印出來讓使用者貼上。**到此為止，不要接著做下一步。**
 
 ## Git
 
@@ -103,7 +103,7 @@ Build OK, Test OK
 - 流程圖寫進文件時保留 Mermaid 原始碼。
 - 文件裡的路徑、指令與檔名必須是真的存在的；不確定就不寫。
 - 設計決策寫成 `docs/adr/NNN-slug.md`（範本 `docs/adr/_template.md`），並在 `docs/decisions.md` 的索引加一行；`decisions.md` 不放 ADR 內文。
-- 需求進度表（`docs/current-status.md`）與計畫檔（`docs/plan/`）的規則見 `engineering-workflow.md`「需求展開與進度表」。
+- 計畫（`docs/plans/`）與專案層級快照（`docs/current-status.md`）的規則見 `engineering-workflow.md`「計畫分開管理」。
 
 ## 驗證
 

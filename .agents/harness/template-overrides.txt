@@ -1,0 +1,2 @@
+# 列在這裡的範本管理檔案由專案自己維護，New-AiProject.ps1 -Refresh 不覆蓋；範本升級時要手動比對合併
+scripts/ai/check-ai-structure.ps1

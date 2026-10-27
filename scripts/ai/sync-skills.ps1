@@ -1,145 +1,228 @@
 ﻿<#
-.SYNOPSIS
-  從 .agents/skills（唯一來源）同步共用 skill 到平台目錄（.claude/skills）。
-.DESCRIPTION
-  依 .agents/harness/skill-sync.json：
-    shared     來源與鏡像都有，鏡像內容必須與來源一致。
-    claudeOnly 只存在 .claude/skills 的平台專屬 skill，同步不覆蓋、不刪除。
-    codexOnly  只存在 .agents/skills，不鏡像到 Claude。
-    ignore     比對與複製時略過的檔名樣式。
-  -Check 只檢查、不寫入；有差異時 exit 1。重複執行不會產生額外變更。
-  未登記的 skill 與孤立鏡像只回報，不自動刪除。
+	Mirror .agents/skills (source of truth, read by Codex) into .claude/skills
+	(read by Claude Code). Neither tool reads the other's directory and symlinks
+	are unreliable on Windows, so the mirror is a verified copy.
+
+	  sync-skills.ps1           copy source -> target, then report
+	  sync-skills.ps1 -Check    report only, change nothing (exit 1 on drift)
+
+	Rules (manifest: .agents/harness/skill-sync.json):
+	  - every skill in the source is mirrored, unless listed in "codexOnly"
+	  - a skill that exists only in the target must be listed in "claudeOnly"
+	  - mirrored skills are replaced wholesale; never edit them in the target
 #>
+
 [CmdletBinding()]
 param(
-  [switch]$Check,
-  [string]$Root
+	[switch]$Check,
+	[string]$RepositoryRoot
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
-if (-not $Root) { $Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
-$Root = (Resolve-Path -LiteralPath $Root).Path
-$configPath = Join-Path $Root '.agents/harness/skill-sync.json'
 
-$script:problems = New-Object System.Collections.Generic.List[string]
-$script:changes = New-Object System.Collections.Generic.List[string]
-function Add-Problem([string]$msg) { $script:problems.Add($msg) | Out-Null; Write-Host "  [錯誤] $msg" -ForegroundColor Red }
-function Add-Change([string]$msg) { $script:changes.Add($msg) | Out-Null; Write-Host "  [變更] $msg" -ForegroundColor Yellow }
-
-if (-not (Test-Path -LiteralPath $configPath)) {
-  Write-Host "找不到 $configPath" -ForegroundColor Red
-  exit 1
-}
-try {
-  $config = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
-} catch {
-  Write-Host "skill-sync.json 不是有效 JSON：$($_.Exception.Message)" -ForegroundColor Red
-  exit 1
+if ([string]::IsNullOrWhiteSpace($RepositoryRoot))
+{
+	# Split-Path instead of Join-Path '..\..': a backslash is an ordinary character on Linux (pwsh in CI).
+	$RepositoryRoot = (Resolve-Path -LiteralPath (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))).Path
 }
 
-function As-Array($value) { if ($null -eq $value) { return @() } return @($value) }
-$shared = As-Array $config.shared
-$claudeOnly = As-Array $config.claudeOnly
-$codexOnly = As-Array $config.codexOnly
-$ignore = As-Array $config.ignore
-$sourceDir = Join-Path $Root $config.source
-
-function Test-Ignored([string]$name) {
-  foreach ($pattern in $ignore) { if ($name -like $pattern) { return $true } }
-  return $false
+$manifestPath = Join-Path $RepositoryRoot '.agents/harness/skill-sync.json'
+if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf))
+{
+	Write-Host "FAIL manifest not found: $manifestPath"
+	exit 1
 }
 
-function Get-RelativeFiles([string]$dir) {
-  $result = @{}
-  if (-not (Test-Path -LiteralPath $dir)) { return $result }
-  $base = (Resolve-Path -LiteralPath $dir).Path.TrimEnd('\', '/')
-  Get-ChildItem -LiteralPath $dir -Recurse -File -Force | Where-Object { -not (Test-Ignored $_.Name) } | ForEach-Object {
-    $rel = $_.FullName.Substring($base.Length + 1).Replace('\', '/')
-    $result[$rel] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
-  }
-  return $result
+$manifest = [IO.File]::ReadAllText($manifestPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+$sourceDirectory = Join-Path $RepositoryRoot $manifest.sourceDirectory
+$targetDirectory = Join-Path $RepositoryRoot $manifest.targetDirectory
+$claudeOnly = @($manifest.claudeOnly)
+$codexOnly = @($manifest.codexOnly)
+$ignoredDirectoryNames = @($manifest.ignoredDirectoryNames)
+$ignoredExtensions = @($manifest.ignoredExtensions)
+
+function Get-SkillNames
+{
+	param([string]$Directory)
+
+	if (-not (Test-Path -LiteralPath $Directory -PathType Container))
+	{
+		return @()
+	}
+
+	return @(Get-ChildItem -LiteralPath $Directory -Directory -Force |
+		Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'SKILL.md') -PathType Leaf } |
+		ForEach-Object { $_.Name })
 }
 
-function Get-SkillNames([string]$dir) {
-  if (-not (Test-Path -LiteralPath $dir)) { return @() }
-  return @(Get-ChildItem -LiteralPath $dir -Directory -Force | Where-Object { -not (Test-Ignored $_.Name) } | ForEach-Object { $_.Name })
+function Get-SkillFileMap
+{
+	param([string]$SkillDirectory)
+
+	$map = @{}
+	$root = (Resolve-Path -LiteralPath $SkillDirectory).Path.TrimEnd('\', '/')
+	foreach ($file in Get-ChildItem -LiteralPath $root -Recurse -File -Force)
+	{
+		$relative = $file.FullName.Substring($root.Length).TrimStart('\', '/').Replace('\', '/')
+		$segments = $relative.Split('/')
+		$ignored = $false
+		for ($i = 0; $i -lt $segments.Length - 1; $i++)
+		{
+			if ($ignoredDirectoryNames -contains $segments[$i])
+			{
+				$ignored = $true
+			}
+		}
+		if ($ignoredExtensions -contains $file.Extension.ToLowerInvariant())
+		{
+			$ignored = $true
+		}
+		if (-not $ignored)
+		{
+			$map[$relative] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+		}
+	}
+
+	return $map
 }
 
-$mode = if ($Check) { '檢查' } else { '同步' }
-Write-Host "技能$mode：$Root"
+function Get-MapDifference
+{
+	param($SourceMap, $TargetMap)
 
-# 設定一致性
-$overlap = @($shared | Where-Object { $claudeOnly -contains $_ -or $codexOnly -contains $_ }) + @($claudeOnly | Where-Object { $codexOnly -contains $_ })
-foreach ($name in $overlap) { Add-Problem "skill '$name' 同時登記在多個分類" }
+	$differences = New-Object System.Collections.Generic.List[string]
+	foreach ($key in $SourceMap.Keys)
+	{
+		if (-not $TargetMap.ContainsKey($key))
+		{
+			$differences.Add("missing $key")
+		}
+		elseif ($TargetMap[$key] -ne $SourceMap[$key])
+		{
+			$differences.Add("changed $key")
+		}
+	}
+	foreach ($key in $TargetMap.Keys)
+	{
+		if (-not $SourceMap.ContainsKey($key))
+		{
+			$differences.Add("extra $key")
+		}
+	}
 
-if (-not (Test-Path -LiteralPath $sourceDir)) { Add-Problem "來源目錄不存在：$($config.source)" }
-$sourceSkills = Get-SkillNames $sourceDir
-
-foreach ($name in $sourceSkills) {
-  if (-not (Test-Path -LiteralPath (Join-Path $sourceDir "$name/SKILL.md"))) { Add-Problem "來源 skill '$name' 缺少 SKILL.md" }
-  if (($shared -notcontains $name) -and ($codexOnly -notcontains $name)) {
-    if ($claudeOnly -contains $name) { Add-Problem "claudeOnly skill '$name' 不應放在來源目錄 $($config.source)" }
-    else { Add-Problem "來源 skill '$name' 未登記於 skill-sync.json（shared 或 codexOnly）" }
-  }
-}
-foreach ($name in ($shared + $codexOnly)) {
-  if ($sourceSkills -notcontains $name) { Add-Problem "已登記的 skill '$name' 不存在於來源目錄" }
-}
-
-foreach ($target in (As-Array $config.targets)) {
-  $targetDir = Join-Path $Root $target.path
-  Write-Host "目標 [$($target.platform)] $($target.path)"
-  if (-not (Test-Path -LiteralPath $targetDir)) {
-    if ($Check) { Add-Problem "目標目錄不存在：$($target.path)" }
-    else { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null; Add-Change "建立目錄 $($target.path)" }
-  }
-  $targetSkills = Get-SkillNames $targetDir
-
-  foreach ($name in $targetSkills) {
-    if ($shared -contains $name) { continue }
-    if ($claudeOnly -contains $name -and $target.platform -eq 'claude') { Write-Host "  [保護] 平台專屬 skill '$name' 不同步、不刪除"; continue }
-    Add-Problem "孤立或未登記的鏡像 '$($target.path)/$name'：請登記為 claudeOnly，或確認後手動刪除"
-  }
-  if ($target.platform -eq 'claude') {
-    foreach ($name in $claudeOnly) {
-      if ($targetSkills -notcontains $name) { Write-Host "  [警告] claudeOnly skill '$name' 不存在於 $($target.path)" -ForegroundColor DarkYellow }
-    }
-  }
-
-  foreach ($name in $shared) {
-    $src = Join-Path $sourceDir $name
-    if (-not (Test-Path -LiteralPath $src)) { continue }
-    $dst = Join-Path $targetDir $name
-    $srcFiles = Get-RelativeFiles $src
-    $dstFiles = Get-RelativeFiles $dst
-    foreach ($rel in $srcFiles.Keys) {
-      $differs = (-not $dstFiles.ContainsKey($rel)) -or ($dstFiles[$rel] -ne $srcFiles[$rel])
-      if (-not $differs) { continue }
-      if ($Check) { Add-Problem "鏡像不一致：$($target.path)/$name/$rel" }
-      else {
-        $destFile = Join-Path $dst $rel
-        New-Item -ItemType Directory -Path (Split-Path -Parent $destFile) -Force | Out-Null
-        Copy-Item -LiteralPath (Join-Path $src $rel) -Destination $destFile -Force
-        Add-Change "更新 $($target.path)/$name/$rel"
-      }
-    }
-    foreach ($rel in $dstFiles.Keys) {
-      if ($srcFiles.ContainsKey($rel)) { continue }
-      if ($Check) { Add-Problem "鏡像多出來源沒有的檔案：$($target.path)/$name/$rel" }
-      else {
-        Remove-Item -LiteralPath (Join-Path $dst $rel) -Force
-        Add-Change "移除 $($target.path)/$name/$rel（來源已無此檔）"
-      }
-    }
-  }
+	return @($differences | Sort-Object)
 }
 
-Write-Host ''
-if ($script:problems.Count -gt 0) {
-  Write-Host "結果：失敗（$($script:problems.Count) 個問題）" -ForegroundColor Red
-  exit 1
+function Copy-SkillMirror
+{
+	param([string]$Source, [string]$Target, [string]$TargetRoot)
+
+	if (-not (Test-Path -LiteralPath $TargetRoot -PathType Container))
+	{
+		New-Item -ItemType Directory -Path $TargetRoot -Force | Out-Null
+	}
+
+	$resolvedRoot = (Resolve-Path -LiteralPath $TargetRoot).Path.TrimEnd('\', '/')
+	if (Test-Path -LiteralPath $Target)
+	{
+		$resolvedTarget = (Resolve-Path -LiteralPath $Target).Path
+		if (-not $resolvedTarget.StartsWith($resolvedRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase))
+		{
+			throw "Refusing to replace a path outside the target root: $resolvedTarget"
+		}
+		Remove-Item -LiteralPath $resolvedTarget -Recurse -Force
+	}
+
+	New-Item -ItemType Directory -Path $Target -Force | Out-Null
+	Copy-Item -Path (Join-Path $Source '*') -Destination $Target -Recurse -Force
 }
-if ($script:changes.Count -gt 0) { Write-Host "結果：完成同步（$($script:changes.Count) 項變更）" -ForegroundColor Green }
-else { Write-Host '結果：一致，無需變更' -ForegroundColor Green }
+
+$problems = New-Object System.Collections.Generic.List[string]
+$sourceNames = @(Get-SkillNames -Directory $sourceDirectory)
+$targetNames = @(Get-SkillNames -Directory $targetDirectory)
+
+foreach ($name in $codexOnly)
+{
+	if ($sourceNames -notcontains $name)
+	{
+		$problems.Add("codexOnly skill '$name' is not in $($manifest.sourceDirectory)")
+	}
+	if ($targetNames -contains $name)
+	{
+		$problems.Add("codexOnly skill '$name' must not exist in $($manifest.targetDirectory)")
+	}
+}
+
+foreach ($name in $claudeOnly)
+{
+	if ($targetNames -notcontains $name)
+	{
+		$problems.Add("claudeOnly skill '$name' is not in $($manifest.targetDirectory)")
+	}
+	if ($sourceNames -contains $name)
+	{
+		$problems.Add("claudeOnly skill '$name' must not exist in $($manifest.sourceDirectory)")
+	}
+}
+
+foreach ($name in $targetNames)
+{
+	if (($sourceNames -notcontains $name) -and ($claudeOnly -notcontains $name))
+	{
+		$problems.Add("ORPHAN '$name' exists only in $($manifest.targetDirectory); move it to $($manifest.sourceDirectory) or list it in claudeOnly")
+	}
+}
+
+$mirrored = @($sourceNames | Where-Object { $codexOnly -notcontains $_ })
+foreach ($name in $mirrored)
+{
+	$sourcePath = Join-Path $sourceDirectory $name
+	$targetPath = Join-Path $targetDirectory $name
+	$state = 'OK'
+	$detail = @()
+
+	if ($targetNames -notcontains $name)
+	{
+		$state = 'MISSING'
+	}
+	else
+	{
+		$detail = @(Get-MapDifference -SourceMap (Get-SkillFileMap -SkillDirectory $sourcePath) -TargetMap (Get-SkillFileMap -SkillDirectory $targetPath))
+		if ($detail.Count -gt 0)
+		{
+			$state = 'DRIFT'
+		}
+	}
+
+	if ($state -eq 'OK')
+	{
+		Write-Host "OK   $name"
+		continue
+	}
+
+	if ($Check)
+	{
+		$problems.Add("$state '$name' $($detail -join '; ')")
+	}
+	else
+	{
+		Copy-SkillMirror -Source $sourcePath -Target $targetPath -TargetRoot $targetDirectory
+		Write-Host "SYNC $name ($state)"
+	}
+}
+
+if ($problems.Count -gt 0)
+{
+	foreach ($problem in $problems)
+	{
+		Write-Host "FAIL $problem"
+	}
+	exit 1
+}
+
+if ($Check)
+{
+	Write-Host "Skills in sync: $($mirrored.Count) mirrored, $($claudeOnly.Count) claudeOnly, $($codexOnly.Count) codexOnly."
+}
 exit 0

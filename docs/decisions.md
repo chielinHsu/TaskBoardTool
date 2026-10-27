@@ -6,6 +6,7 @@
 
 | 編號 | 標題 | 狀態 | 日期 |
 |---|---|---|---|
+| [ADR-027](adr/027-ai-structure-v3.md) | AI 結構 3.0.0：每個計畫一個資料夾（取代 ADR-025 的需求進度表與 changelog 部分） | 採用 | 2026-10-27 |
 | [ADR-026](adr/026-pr-automerge-any-base.md) | PR 自動合併接受其他目標分支 | 採用 | 2026-10-15 |
 | [ADR-025](adr/025-ai-structure-v2.md) | 導入 AI 結構 2.0.0（需求進度表、ADR 一檔一決策、總體計畫、SOLID 與四種輸出） | 採用 | 2026-10-21 |
 | [ADR-024](adr/024-claude-card-project-from-app-group.md) | Claude 卡片專案＝App 側欄群組，無群組為「未分組」 | 採用 | 2026-10-14 |

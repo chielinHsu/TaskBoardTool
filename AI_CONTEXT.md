@@ -28,7 +28,7 @@ Python 標準函式庫 HTTP server／SQLite／subprocess RPC；原生 HTML／CSS
 | outputs/taskboard/*.ps1、launch-app.vbs | 啟動、移除整合、桌面捷徑 |
 | outputs/taskboard/.data | 私人資料庫／profile／token，Git 排除 |
 | tests／work | 版本化測試／不進 Git 的截圖及隔離資料 |
-| docs | 總體計畫 `00-master-plan.md`、架構、決策索引 `decisions.md` 與 `adr/`（一檔一決策）、需求進度表 `current-status.md`、計畫檔 `plan/`、步驟輸出 `steps/`、AI 工作紀錄 `changelog-ai.md`、使用者文件（user-guide、github-automation） |
+| docs | 總體計畫 `00-master-plan.md`、架構、決策索引 `decisions.md` 與 `adr/`（一檔一決策）、專案層級的快照 `current-status.md`、計畫 `plans/`（`INDEX.md` 與每個計畫的資料夾，含細項表、`status.md`、`changelog.md`）、步驟輸出 `steps/`、2.x 的舊紀錄 `legacy/`（只讀）、使用者文件（user-guide、github-automation） |
 | .agents／.claude／scripts/ai／tools | 共用協作骨架（AI 結構 2.0.0，ADR-025）、Claude 設定、結構與路由檢查、`tools/ste-lint.mjs`（四種輸出 spec.md 的句長與被動語態檢查） |
 
 ## 建置與測試
@@ -98,7 +98,7 @@ run：看板的一次派工紀錄；session／thread：Codex 對話，同一 ses
 | UI、Appearance、icon | index.html、app-panel.js、current-status.md |
 | 啟動／桌面／重開 | start-app.ps1、start.ps1、desktop-launch.ps1、architecture.md |
 | 派工、API、保存 | server.py、tool_adapters.py、architecture.md、decisions.md（索引，內文在 docs/adr/） |
-| 需求進度表／計畫檔 | docs/current-status.md 開頭的「需求進度表」、docs/plan/_template.md、engineering-workflow.md「需求展開與進度表」；非單純需求先展開細項再實作 |
+| 計畫與細項 | docs/plans/INDEX.md、docs/plans/_template/、engineering-workflow.md「計畫分開管理」；非單純需求先歸到計畫並展開細項再實作 |
 | 架構、設計決策 | docs/00-master-plan.md、docs/architecture.md、docs/decisions.md、docs/adr/ |
 | 功能步驟（四種輸出） | project-rules.md（四種輸出、Step Protocol）、docs/steps/_template/、tools/ste-lint.mjs |
 | Claude Code 整合 | claude_adapter.py、claude_sessions.py、tests/fake_claude_cli.py、ADR-006 |

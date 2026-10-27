@@ -1,13 +1,13 @@
 # TaskBoardTool — 總體計畫（Master Plan）
 
-> 進度：[current-status.md](current-status.md)（需求進度表）｜ 架構：[architecture.md](architecture.md) ｜ 決策：[decisions.md](decisions.md) ｜ 工作規則：[../AGENTS.md](../AGENTS.md)
-> 建立日期：2026-10-21（導入 AI 結構 2.0.0 時依 README、AI_CONTEXT、architecture 回填；專案本身自 2026-10-10 開發）。本檔回答「整個專案要做什麼、不做什麼、分幾步做」；每一步的細節在 `docs/plan/<ID>-<slug>.md`，目前做到哪在 `docs/current-status.md`。
+> 進度：[plans/INDEX.md](plans/INDEX.md)（計畫索引）｜ 專案快照：[current-status.md](current-status.md) ｜ 架構：[architecture.md](architecture.md) ｜ 決策：[decisions.md](decisions.md) ｜ 工作規則：[../AGENTS.md](../AGENTS.md)
+> 建立日期：2026-10-21（導入 AI 結構 2.0.0 時依 README、AI_CONTEXT、architecture 回填；專案本身自 2026-10-10 開發）。本檔回答「整個專案要做什麼、不做什麼、分幾步做」；每一步（計畫）的細節在 `docs/plans/<狀態>/<ID>-<slug>/plan.md`，目前做到哪在 `docs/plans/INDEX.md` 與各計畫的 `status.md`。
 
 ## 修改紀錄
 
 | 日期 | 修改者 | 說明 |
 |---|---|---|
-| 2026-10-21 | Claude Code (Sonnet 5.5) | 導入 AI 結構 2.0.0 時建立，內容依 README、AI_CONTEXT、architecture 與需求進度表回填（ADR-025） |
+| 2026-10-21 | Claude Code (Sonnet 5.5) | 導入 AI 結構 2.0.0 時建立，內容依 README、AI_CONTEXT、architecture 與 2.x 的需求進度表回填（ADR-025；3.0.0 起進度在 `docs/plans/`，ADR-027） |
 
 ## 1. 要做什麼
 
@@ -20,7 +20,7 @@ TaskBoardTool 是 Windows 本機的 AI 任務看板：同一套 SQLite、排程�
 - 不內嵌到 Claude App 側欄（只有 Browser 窗格附掛與 Claude Code mod 窗格）。
 - 不做多人、雲端或遠端存取；服務只監聽 `127.0.0.1`。
 - 不涵蓋雲端、其他主機與 subagent 的 session。
-- 不做截止日期、阻塞關係欄位與工作流欄位；Git 分支／worktree 綁定尚未實作（需求進度表 R25，待使用者決定）。
+- 不做截止日期、阻塞關係欄位與工作流欄位；Git 分支／worktree 綁定尚未實作（計畫 R25，待使用者決定）。
 - 不引入 npm build 或前端框架；唯一外部前端函式庫是 Mermaid（由安裝腳本下載並核對雜湊，ADR-019）。
 - 不自動修改官方 App 安裝檔，不複製登入資料。
 
@@ -86,7 +86,7 @@ flowchart TB
 
 ## 5. 實作步驟
 
-本專案沒有預先排好的步驟：功能由使用者逐次提出，開發順序與狀態以 `docs/current-status.md` 的需求進度表為準（R01–R21 已完成，依 changelog 與 git log 回填）。之後跨多個 session 的功能依 `docs/plan/_template.md` 建立計畫檔，並在本表新增一列。
+本專案沒有預先排好的步驟：功能由使用者逐次提出，開發順序與狀態以 `docs/plans/INDEX.md` 為準（R01–R26 在 3.0.0 之前完成，記在 `docs/legacy/current-status.md` 的需求進度表，R01–R21 依 changelog 與 git log 回填）。之後的功能依 `docs/plans/_template/` 建立計畫資料夾，並在本表新增一列。
 
 | 步驟 | 層級 | 主題 | 關鍵產出 | 主要量測 |
 |---|---|---|---|---|
@@ -95,7 +95,7 @@ flowchart TB
 | R10–R15 | 修正 | 嵌入看板連線、標題跟隨、心智圖、auto 權限、第一次提問、倒回對話 | 穩定性修正與 Session 心智圖 | 可控重現（Debugger.pause）、單元測試 |
 | R16–R17 | 文件／發行 | 操作手冊與影片、GitHub AI PR／CI／Pages | `docs/user-guide.md`、CI、Pages 展示 | CI run、Chrome 展示操作 |
 | R18–R21 | 介面／系統 | 專案篩選與附件、worktree 專案名、群組「未分組」、開機自動啟動 | 附件 API、watchdog | Python 82–84 項、真實 App 讀取 |
-| R22 | 雜項 | 導入 AI 結構 2.0.0 | 需求進度表、ADR 資料夾、本檔 | 結構檢查四項 |
+| R22 | 雜項 | 導入 AI 結構 2.0.0 | 需求進度表（3.0.0 起為 `docs/plans/`，R27）、ADR 資料夾、本檔 | 結構檢查四項 |
 | R23–R25 | 待處理 | baseline 測試失敗、驗證缺口、Git 綁定 | 待使用者決定 | |
 
 為什麼這個順序：先有看板與工具整合（R01–R05），再補發行與使用者面的功能（R06–R09），之後以修正與穩定性為主；順序依使用者需求而非預排。
@@ -121,13 +121,13 @@ flowchart TB
 flowchart TD
   A["實作 + 四種輸出 + perf.md"] --> B{"建置／測試／lint 全部通過？"}
   B -- 否 --> C["如實回報，修好再繼續"] --> A
-  B -- 是 --> D["更新需求進度表、交接單 → commit → 推送分支、開 PR、auto rebase 合併"]
+  B -- 是 --> D["更新計畫的細項表與 status／changelog、交接單 → commit → 推送分支、開 PR、auto rebase 合併"]
   D --> E["對使用者提示：commit hash、訊息、變更摘要、效能、未解決事項"]
-  E --> F["為下一步開新 session（Start prompt 在下一步 plan 檔底部）"]
+  E --> F["為下一步開新 session（Start prompt 在下一步計畫 plan.md 的底部）"]
   F --> G["本 session 結束，不接著做下一步"]
 ```
 
-為什麼每步開新 session：每個步驟的上下文很大且彼此獨立；新 session 只靠 `AGENTS.md`、`docs/current-status.md` 與該步 plan 檔就能接手，不被前一步的雜訊拖累。
+為什麼每步開新 session：每個步驟的上下文很大且彼此獨立；新 session 只靠 `AGENTS.md`、`docs/plans/INDEX.md` 與該步計畫的 `plan.md`、`status.md` 就能接手，不被前一步的雜訊拖累。
 
 ## 8. 風險與待決策
 
@@ -137,4 +137,4 @@ flowchart TD
 | 2 | Codex App 大改版可能使 DOM／CSS 選擇器與 CDP 注入失效 | `tests/taskboard-app.test.mjs` 回歸；`app-injector.mjs` 逾時只記 `renderer-busy` 不重建 | App 更新後 |
 | 3 | `server.py`、`index.html` 單檔過大，變更風險高 | 新功能放新模組；大改前先加測試 | 持續 |
 | 4 | 本機 `python` 可能是失效的 Store alias，測試靜默結束 | 用 `py -3`（見 `AI_CONTEXT.md`） | 持續 |
-| 5 | 驗證缺口（窗格下拉、重開機自動啟動、核准往返、Claude 角色實際 model／effort） | 需求進度表 R24，排人工驗收 | 待使用者決定 |
+| 5 | 驗證缺口（窗格下拉、重開機自動啟動、核准往返、Claude 角色實際 model／effort） | 計畫 R24（`docs/plans/active/R24-verification-gaps/`），排人工驗收 | 待使用者決定 |
