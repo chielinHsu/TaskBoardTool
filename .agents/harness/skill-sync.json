@@ -1,21 +1,14 @@
 {
   "version": 1,
-  "source": ".agents/skills",
-  "targets": [
-    {
-      "platform": "claude",
-      "path": ".claude/skills"
-    }
-  ],
-  "shared": [
-    "ai-handoff"
-  ],
+  "sourceDirectory": ".agents/skills",
+  "targetDirectory": ".claude/skills",
   "claudeOnly": [],
   "codexOnly": [],
-  "ignore": [
-    ".DS_Store",
-    "Thumbs.db",
-    "*.tmp",
-    "*.bak"
+  "ignoredDirectoryNames": [
+    "__pycache__"
+  ],
+  "ignoredExtensions": [
+    ".pyc",
+    ".pyo"
   ]
 }
