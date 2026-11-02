@@ -216,17 +216,23 @@ test('the import_plan tool files a plan through the board API and reports the cr
 })
 
 // The App's two connectors, answered from memory: list_groups, then list_sessions per group.
-const GROUPS = [{ id: 'cg-1', name: '交易工具', session_count: 1 }, { id: 'cg-2', name: '股魚魚缸網頁', session_count: 1 }, { id: 'cg-3', name: '空群組', session_count: 0 }]
+// list_sessions leaves out the asking session (local_self): its own group comes from get_session("self"), and a
+// group holding only it answers in prose, not with [].
+const GROUPS = [{ id: 'cg-1', name: '交易工具', session_count: 1 }, { id: 'cg-2', name: '股魚魚缸網頁', session_count: 1 }, { id: 'cg-3', name: '空群組', session_count: 0 }, { id: 'cg-4', name: '看板', session_count: 1 }]
 const MEMBERS: Record<string, any[]> = {
   'cg-1': [{ sessionId: 'local_a', title: 'A', group: { id: 'cg-1', name: '交易工具' } }],
   'cg-2': [{ sessionId: 'local_c', title: 'C', group: { id: 'cg-2', name: '股魚魚缸網頁' } }],
 }
+const SELF = { sessionId: 'local_self', title: '本 session', group: { id: 'cg-4', name: '看板' } }
 const text = (value: unknown, isError = false) => ({ value: { isError, content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] } })
 function appConnectors(on: any, calls: any[] = []) {
   on('mcp.call', async (_$: any, e: any) => {
     calls.push(e)
     if (e.server === 'ccd_sidebar' && e.tool === 'list_groups') return text(GROUPS)
-    if (e.server === 'ccd_session_mgmt' && e.tool === 'list_sessions') return text(MEMBERS[e.args.group] ?? [])
+    if (e.server === 'ccd_session_mgmt' && e.tool === 'get_session' && e.args.session_id === 'self') return text(SELF)
+    if (e.server === 'ccd_session_mgmt' && e.tool === 'list_sessions') {
+      return text(MEMBERS[e.args.group] ?? 'No other sessions found in group "' + e.args.group + '".')
+    }
     return text('unknown tool', true)
   })
 }
@@ -248,11 +254,13 @@ test('the mod relays Claude App sidebar groups to the board as session projects,
   await clock.settle()
   expect(posted.length).toBe(1)
   const body = JSON.parse(posted[0])
-  expect(body.sessions.map((s: any) => s.sessionId)).toEqual(['local_a', 'local_c'])
-  expect(body.sessions[0].group.name).toBe('交易工具')
+  expect(body.error).toBe(undefined) // a group holding only this session is not a failed read
+  expect(body.sessions.map((s: any) => s.sessionId)).toEqual(['local_self', 'local_a', 'local_c'])
+  expect(body.sessions[0].group.name).toBe('看板')
+  expect(body.sessions[1].group.name).toBe('交易工具')
   // never one list_sessions for every session: its result is too large and comes back as a "saved to a file" note
   const reads = calls.filter(c => c.tool === 'list_sessions')
-  expect(reads.map(c => c.args.group)).toEqual(['cg-1', 'cg-2']) // the empty group is not read
+  expect(reads.map(c => c.args.group)).toEqual(['cg-1', 'cg-2', 'cg-4']) // the empty group is not read
   expect(reads.every(c => c.args.limit >= 1 && c.args.limit <= 100)).toBe(true)
   await $.ui.press({ plugin: 'taskboard-pane', key: 'refresh', surface: 'desktop' })
   expect(posted.length).toBe(1) // unchanged mapping is not re-sent…

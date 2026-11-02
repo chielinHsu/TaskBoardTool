@@ -187,11 +187,14 @@ let lastGroupTry = -Infinity
 const GROUPS_RESEND_MS = 300000 // an unchanged mapping is re-sent now and then: the board reads it as proof the groups are fresh
 class NoConnector extends Error {}
 
-async function connectorJson($: Engine, server: string, tool: string, args: Record<string, unknown>): Promise<any> {
+// A group whose only member is the asking session: list_sessions answers in prose, not with an empty array.
+const NO_OTHER_SESSIONS = /^No other sessions found\b/
+async function connectorJson($: Engine, server: string, tool: string, args: Record<string, unknown>, empty?: RegExp): Promise<any> {
   // A session without the App's connectors (a terminal CLI) has no groups to tell: it stays silent.
   const result = await $.mcp.call(server, tool, args).catch(error => { throw new NoConnector(String(error)) })
   const text = result.content.find(block => block.type === 'text')?.text ?? ''
   if (result.isError) throw new Error(text || tool + ' 回傳錯誤')
+  if (empty && empty.test(text.trim())) return []
   try { return JSON.parse(text) } catch { throw new Error(tool + ' 回傳的不是 JSON：' + text.split('\n')[0].slice(0, 160)) }
 }
 
@@ -200,12 +203,18 @@ async function readGroups($: Engine): Promise<{ sessionId: string; group: { id: 
   const groups = await connectorJson($, 'ccd_sidebar', 'list_groups', {})
   if (!Array.isArray(groups)) throw new Error('list_groups 回傳的不是清單')
   const sessions: { sessionId: string; group: { id: string; name: string } }[] = []
+  // list_sessions leaves out the session that asks, so this session's own group comes from get_session("self");
+  // without it every session would report the mapping minus itself and the cards would flip between groups.
+  const self = await connectorJson($, 'ccd_session_mgmt', 'get_session', { session_id: 'self' })
+  if (self && typeof self.sessionId === 'string' && self.group && self.group.id && self.group.name) {
+    sessions.push({ sessionId: self.sessionId, group: { id: String(self.group.id), name: String(self.group.name) } })
+  }
   for (const g of groups) {
     if (!g || !g.id || !g.name || !(Number(g.session_count) > 0)) continue
-    const rows = await connectorJson($, 'ccd_session_mgmt', 'list_sessions', { group: String(g.id), limit: Number(g.session_count) + 20 })
+    const rows = await connectorJson($, 'ccd_session_mgmt', 'list_sessions', { group: String(g.id), limit: Number(g.session_count) + 20 }, NO_OTHER_SESSIONS)
     if (!Array.isArray(rows)) throw new Error('list_sessions 回傳的不是清單')
     for (const r of rows) {
-      if (r && typeof r.sessionId === 'string') sessions.push({ sessionId: r.sessionId, group: { id: String(g.id), name: String(g.name) } })
+      if (r && typeof r.sessionId === 'string' && r.sessionId !== self?.sessionId) sessions.push({ sessionId: r.sessionId, group: { id: String(g.id), name: String(g.name) } })
     }
   }
   return sessions
