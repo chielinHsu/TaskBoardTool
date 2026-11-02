@@ -2,6 +2,20 @@
 
 > 只新增，新紀錄放最上方；格式見 `docs/plans/_template/changelog.md`。
 
+## 2026-11-02（App 畫面確認）— Claude Code (Claude Opus 5.5)
+
+### 細項
+- R28.1：真實 App 驗證。
+
+### 修改的檔案
+- `status.md`、`changelog.md`（本計畫）
+
+### 驗證
+- 使用者提供的真實 App 窗格截圖不再顯示群組讀取錯誤。VERIFIED。
+
+### Commit
+- 見 PR。
+
 ## 2026-11-02 — Claude Code (Claude Opus 5.5)
 
 ### 細項
