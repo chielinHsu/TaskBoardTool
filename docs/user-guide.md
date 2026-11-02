@@ -2,6 +2,12 @@
 
 本機任務看板，讓 **Codex** 與 **Claude Code** 共用同一套卡片、排程、對話紀錄與人工驗收。本手冊依「安裝 → 啟動 → 操作 → 進階功能 → 排錯」分章說明；技術細節與不變條件見 `AI_CONTEXT.md`，安裝與整合的背景說明見 `outputs/taskboard/README.md`。
 
+## 修改紀錄
+
+| 日期 | 內容 |
+|---|---|
+| 2026-11-02 | Claude App 新版把資料搬到 `%LOCALAPPDATA%\Claude-Data\claude_*\`，Claude session 同步改為先找這裡（計畫 R29） |
+
 ## 45 秒功能展示
 
 <video src="../work/promo-video/TaskBoardTool-promo-45s.mp4" controls poster="images/promo-poster.jpg" width="960"></video>
@@ -258,7 +264,7 @@ session 以 (工具, id) 識別：同一個 session 不會重複建卡，延續�
 
 ### 6.2 既有對話：唯讀同步卡片 → 派工卡片
 
-- 「既有對話」每 15 秒同步本機未封存的 Codex sessions 與 Claude App 的 Code sessions（Store 版 Claude App 的檔案在 `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code-sessions`，看板會自動尋找）。
+- 「既有對話」每 15 秒同步本機未封存的 Codex sessions 與 Claude App 的 Code sessions（Store 版 Claude App 的檔案在 `%LOCALAPPDATA%\Claude-Data\claude_*\claude-code-sessions`，較舊的版本在 `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code-sessions`，看板會自動尋找）。
 - 看板會把這些 session 顯示為 **唯讀同步卡片**（標籤「同步 session · 唯讀」）：可閱讀最近 20 回合，不能拖曳、不會自動派工、不寫入資料庫、不包含在備份內。
 - 要接手這個對話：按「**建立派工卡片**」，卡片進入列管並連結來源 session；補上需求、移到待辦後才派工。預設開獨立的新對話；只有你在「對話方式」選延續來源對話，執行時才續跑原 session。
 - 封存的 session 不列出；來源 session 封存後唯讀卡片下輪消失，已建立的派工卡片保留。

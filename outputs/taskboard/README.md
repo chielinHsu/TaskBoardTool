@@ -81,7 +81,7 @@
 
 ### 4.3 Claude App session 同步與對話鏡像
 
-- **唯讀同步**：讀 `claude-code-sessions\*\*\local_*.json` 的標題／資料夾／模型／活動時間，以及對應 transcript 尾端 256 KiB 的回合訊號（官方標示 transcript 為內部格式，解析為盡力而為）。Store 版（MSIX）Claude App 的 AppData 被虛擬化，檔案實際在 `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code-sessions`，看板先找這裡、再找 `%APPDATA%\Claude\`；橫幅「資料未找到」時附上實際檢查的路徑。封存的 session 不列出；同步不寫入資料庫、不派工。
+- **唯讀同步**：讀 `claude-code-sessions\*\*\local_*.json` 的標題／資料夾／模型／活動時間，以及對應 transcript 尾端 256 KiB 的回合訊號（官方標示 transcript 為內部格式，解析為盡力而為）。Store 版（MSIX）Claude App 的 AppData 被虛擬化，新版把資料搬出套件到 `%LOCALAPPDATA%\Claude-Data\claude_*\claude-code-sessions`（套件內只留 `.user-data-left.*` 標記檔），較舊的版本在 `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code-sessions`；看板依序找這兩處、再找 `%APPDATA%\Claude\`；橫幅「資料未找到」時附上實際檢查的路徑。封存的 session 不列出；同步不寫入資料庫、不派工。
 - **對話鏡像**：安裝 mod 後，App 的每個 Code session 自動成為看板卡片：首句建卡直接進進行中（priority 高、tool claude、綁定 session、cwd 存在才填）、每句一筆 `mirror` run、回合結束進待審核（中止→列管、排有 nextRun→待辦、已完成卡重開）。鏡像中的卡片不可拖、不能改狀態、不能派工或送後續需求，徽章「Claude App 對話執行中」；不佔單一任務鎖、排程不領；看板自己派的 Claude run 不再鏡像。標題先用首句第一行（去掉 App 前置的 `<system-reminder>` 區塊），App 命名後跟隨 App 標題，看板上改過即不再覆寫（ADR-020）；需求簡介 seed→drafted→manual，使用者編輯過永不覆寫。App 倒回（rewind）換新 session id 時依 `priorCliSessionIds` 把原卡改綁新 id、舊 id 的 runs 併入，不另建卡。真實 App 觸發、回合結束進待審核已實測。
 - **Browser 窗格**：看板不內嵌於 Claude App 網頁層；可用 `start.ps1` 的瀏覽器版，或在 Claude App 的 Code 分頁用內建 Browser 窗格開 `http://127.0.0.1:47824`（專案根目錄 `.claude/launch.json` 提供 `taskboard` 設定附掛既有服務）。
 

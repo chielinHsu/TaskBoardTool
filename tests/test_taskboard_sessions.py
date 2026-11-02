@@ -163,6 +163,30 @@ class ClaudeDesktopRootTests(unittest.TestCase):
                     'cliSessionId': 'abc-123', 'title': 'Store build', 'cwd': str(root), 'lastActivityAt': 1700000000000}), encoding='utf-8')
                 self.assertEqual([row['id'] for row in fresh.list()], ['abc-123'])
 
+    def test_claude_data_folder_wins_after_the_app_moves_out_of_the_package(self):
+        import claude_sessions
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            local = root / 'Local'
+            with patch.dict('os.environ', {'APPDATA': str(root / 'Roaming'), 'LOCALAPPDATA': str(local)}):
+                index = claude_sessions.ClaudeSessionIndex(projects_root=root / 'p')
+                self.assertFalse(index.desktop_available)
+                # The App leaves only a marker in the package and moves its data to Claude-Data.
+                left = local / 'Packages' / 'Claude_pzs8sxrjxfjjc' / 'LocalCache' / 'Roaming' / 'Claude'
+                left.mkdir(parents=True)
+                (left / '.user-data-left.claude_pzs8sxrjxfjjc').write_text('', encoding='utf-8')
+                moved = local / 'Claude-Data' / 'claude_pzs8sxrjxfjjc' / 'claude-code-sessions'
+                (moved / 'org' / 'user').mkdir(parents=True)
+                (moved / 'org' / 'user' / 'local_a.json').write_text(json.dumps({
+                    'cliSessionId': 'abc-456', 'title': 'Moved data', 'cwd': str(root), 'lastActivityAt': 1700000000000}), encoding='utf-8')
+                # A board started before the move probes again and finds it without a restart.
+                self.assertTrue(index.desktop_available)
+                self.assertEqual(index.desktop_root, moved)
+                self.assertEqual([row['id'] for row in index.list()], ['abc-456'])
+                # Claude-Data wins over a package folder that still exists.
+                (left / 'claude-code-sessions').mkdir()
+                self.assertEqual(claude_sessions.ClaudeSessionIndex(projects_root=root / 'p').desktop_root, moved)
+
     def test_explicit_root_is_never_replaced(self):
         import claude_sessions
         with tempfile.TemporaryDirectory() as temp:

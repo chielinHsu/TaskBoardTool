@@ -5,8 +5,10 @@ Sources (both local, no credentials):
   (title, cwd, model, activity time, archive flag, cliSessionId). The Store (MSIX) build of the
   App virtualises its AppData, so the files physically live under
   %LOCALAPPDATA%/Packages/Claude_*/LocalCache/Roaming/Claude/claude-code-sessions; only descendants
-  of the App see them through %APPDATA%/Claude/claude-code-sessions. Both locations are probed,
-  the package one first, so a board started from the desktop sees the same sessions.
+  of the App see them through %APPDATA%/Claude/claude-code-sessions. Later Store builds move the data out
+  of the package to %LOCALAPPDATA%/Claude-Data/claude_<package suffix>/claude-code-sessions and leave a
+  .user-data-left.* marker behind. All three locations are probed, newest layout first, so a board started
+  from the desktop sees the same sessions.
 - Claude Code CLI transcripts: ~/.claude/projects/<encoded cwd>/<session id>.jsonl
   (official storage location; the record format is documented as internal and may change,
   so every parse is best-effort and bounded).
@@ -34,12 +36,12 @@ def desktop_root_candidates():
     candidates = []
     localappdata = os.environ.get('LOCALAPPDATA', '')
     if localappdata:
-        packages = Path(localappdata) / 'Packages'
-        try:
-            found = sorted(packages.glob('Claude_*/LocalCache/Roaming/Claude/claude-code-sessions'))
-        except OSError:
-            found = []
-        candidates.extend(found)
+        for pattern in ('Claude-Data/claude_*/claude-code-sessions',
+                        'Packages/Claude_*/LocalCache/Roaming/Claude/claude-code-sessions'):
+            try:
+                candidates.extend(sorted(Path(localappdata).glob(pattern)))
+            except OSError:
+                pass
     appdata = os.environ.get('APPDATA', '')
     if appdata:
         candidates.append(Path(appdata) / 'Claude' / 'claude-code-sessions')
