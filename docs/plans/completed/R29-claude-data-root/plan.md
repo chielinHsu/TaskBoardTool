@@ -29,7 +29,7 @@ branch: fix/claude-data-root
 
 | 編號 | 細項 | 狀態 | 分支／commit | 驗證 |
 |---|---|---|---|---|
-| R29.1 | `claude_sessions.py` 的 `desktop_root_candidates()` 加入 Claude-Data，順序 Claude-Data → 套件 → Roaming | ✅ | `fix/claude-data-root` | VERIFIED：本機唯讀實讀找到 Claude-Data，列出 433 個未封存 session |
+| R29.1 | `claude_sessions.py` 的 `desktop_root_candidates()` 加入 Claude-Data，順序 Claude-Data → 套件 → Roaming | ✅ | `fix/claude-data-root`（`94da203`） | VERIFIED：本機唯讀實讀找到 Claude-Data，列出 433 個未封存 session；重啟看板服務後 `/api/state` 的 `claudeChats` 為 433 |
 | R29.2 | `test_taskboard_sessions.py` 新增搬遷後的測試（含未重啟的索引重新探測） | ✅ | `fix/claude-data-root` | VERIFIED：`scripts/ci/check.mjs` exit 0，Python 85 項 OK |
 | R29.3 | `AI_CONTEXT.md`、`architecture.md`、`user-guide.md`、`outputs/taskboard/README.md` 路徑說明 | ✅ | `fix/claude-data-root` | — |
 
