@@ -1,5 +1,11 @@
 # 目前架構
 
+## 修改紀錄
+
+| 日期 | 內容 |
+|---|---|
+| 2026-11-02 | Claude App 新版把資料搬到 `%LOCALAPPDATA%\Claude-Data\claude_*\`，Claude session 同步改為先找這裡（計畫 R29） |
+
 ## PR 自動合併支援其他目標分支（ADR-026，2026-10-15）
 
 修改前，CI 與審查／合併都只接受 main：
@@ -237,7 +243,7 @@ flowchart LR
  Claude --> ClaudeIdx[claude_sessions：Desktop local_*.json＋transcript 尾端] --> Cards2[session:claude:<id>]
  Board --> Handoff[跨工具：handoff 新對話＋摘要，不恢復原 session]
 ```
-邊界：Codex thread/start、thread/resume、turn/start 皆指定 approvalsReviewer=auto_review，保留 approvalPolicy=on-request、workspace-write 與 networkAccess=false；原生審核可拒絕，HTTP 核准清單不無條件回答 accept。Claude 程序以 run 的 cwd 啟動、`acceptEdits`＋看板核准；所有管線 loopback／stdio；Claude session 只讀 claude-code-sessions（Store 版實際位於 `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`，其次 `%APPDATA%\Claude\`）與 `~/.claude/projects`，不寫入、不派工。看板網頁不嵌入 Claude App；`.claude/launch.json` 讓 Claude App 的 Browser 窗格附掛服務；`claude-mod/taskboard-pane` 以 Claude Code mods 在 App 內停靠原生窗格（`$.http.fetch` 讀同一 API、`$.ui.open` 停靠、`$.clock.every` 5 秒輪詢），核心仍在 server.py。
+邊界：Codex thread/start、thread/resume、turn/start 皆指定 approvalsReviewer=auto_review，保留 approvalPolicy=on-request、workspace-write 與 networkAccess=false；原生審核可拒絕，HTTP 核准清單不無條件回答 accept。Claude 程序以 run 的 cwd 啟動、`acceptEdits`＋看板核准；所有管線 loopback／stdio；Claude session 只讀 claude-code-sessions（依序找 `%LOCALAPPDATA%\Claude-Data\claude_*\`（Store 版新版搬出套件後的位置）、`%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`、`%APPDATA%\Claude\`）與 `~/.claude/projects`，不寫入、不派工。看板網頁不嵌入 Claude App；`.claude/launch.json` 讓 Claude App 的 Browser 窗格附掛服務；`claude-mod/taskboard-pane` 以 Claude Code mods 在 App 內停靠原生窗格（`$.http.fetch` 讀同一 API、`$.ui.open` 停靠、`$.clock.every` 5 秒輪詢），核心仍在 server.py。
 
 ## 右側任務屬性與相關議題（2026-10-10）
 
